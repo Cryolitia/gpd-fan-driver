@@ -225,7 +225,7 @@ static const struct hwmon_ops gpd_fan_ops = {
 static const struct hwmon_channel_info *gpd_fan_hwmon_channel_info[] = {
         HWMON_CHANNEL_INFO(chip, HWMON_C_UPDATE_INTERVAL),
         HWMON_CHANNEL_INFO(fan, HWMON_F_INPUT),
-        HWMON_CHANNEL_INFO(pwm, HWMON_PWM_INPUT, HWMON_PWM_ENABLE, HWMON_PWM_MODE),
+        HWMON_CHANNEL_INFO(pwm, HWMON_PWM_INPUT | HWMON_PWM_ENABLE | HWMON_PWM_MODE),
         NULL
 };
 

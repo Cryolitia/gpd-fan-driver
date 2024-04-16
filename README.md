@@ -26,11 +26,11 @@
     # 0: disable (full speed)
     # 1: manual
     # 2: auto
-    $ echo 2 | sudo tee /sys/devices/platform/gpd_fan/hwmon/hwmon*/pwm*_enable
+    $ echo 2 | sudo tee /sys/devices/platform/gpd_fan/hwmon/hwmon*/pwm1_enable
     ```
 - Set fan speed
     ```bash
     # range: 0-255
-    $ echo 127 | sudo tee /sys/devices/platform/gpd_fan/hwmon/hwmon*/pwm*
+    $ echo 127 | sudo tee /sys/devices/platform/gpd_fan/hwmon/hwmon*/pwm1
     ```
   
