@@ -146,6 +146,8 @@ gpd_fan_hwmon_is_visible(__attribute__((unused)) const void *drvdata, enum hwmon
         return S_IRUSR | S_IRGRP | S_IROTH;
     } else if (type == hwmon_pwm) {
         switch (attr) {
+            case hwmon_pwm_mode:
+                return S_IRUSR | S_IRGRP | S_IROTH;
             case hwmon_pwm_enable:
             case hwmon_pwm_input:
                 return S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
@@ -168,6 +170,9 @@ gpd_fan_hwmon_read(struct device *dev, enum hwmon_sensor_types type, u32 attr, _
         }
     } else if (type == hwmon_pwm) {
         switch (attr) {
+            case hwmon_pwm_mode:
+                *val = 1;
+                return 0;
             case hwmon_pwm_enable:
                 *val = data->mode;
                 return 0;
@@ -220,7 +225,7 @@ static const struct hwmon_ops gpd_fan_ops = {
 static const struct hwmon_channel_info *gpd_fan_hwmon_channel_info[] = {
         HWMON_CHANNEL_INFO(chip, HWMON_C_UPDATE_INTERVAL),
         HWMON_CHANNEL_INFO(fan, HWMON_F_INPUT),
-        HWMON_CHANNEL_INFO(pwm, HWMON_PWM_INPUT, HWMON_PWM_ENABLE),
+        HWMON_CHANNEL_INFO(pwm, HWMON_PWM_INPUT, HWMON_PWM_ENABLE, HWMON_PWM_MODE),
         NULL
 };
 
