@@ -10,18 +10,51 @@
 
 #define DRIVER_NAME "gpdfan"
 
-#define ECRAM_PORTIO_ADDR_PORT 0x4E
-#define ECRAM_PORTIO_DATA_PORT 0x4F
-
 static DEFINE_MUTEX(gpd_fan_locker);
 
+struct model_address_config {
+    const u8 addr_port;
+    const u8 data_port;
+    const u16 manual_enable;
+    const u16 fan_speed_read;
+    const u16 pwm_write;
+    const u16 pwm_max;
+};
+
+//static const struct model_address_config g1618_04_driver_data = {
+//        .addr_port = 0x2E,
+//        .data_port = 0x2F,
+//        .manual_enable = 0x11,
+//        .fan_speed_read = 0x0880,
+//        .pwm_write = 0x11,
+//        .pwm_max = 127,
+//};
+
+static const struct model_address_config g1619_04_driver_data = {
+        .addr_port = 0x4E,
+        .data_port = 0x4F,
+        .manual_enable = 0x0275,
+        .fan_speed_read = 0x0218,
+        .pwm_write = 0x1809,
+        .pwm_max = 184,
+};
+
 static const struct dmi_system_id gpd_devices[] = {
+//        {
+//            .ident = "GPD Win 4",
+//            .matches = {
+//                    DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
+//                    DMI_MATCH(DMI_PRODUCT_NAME, "G1618-04"),
+//            },
+//            .driver_data = (void*) &g1618_04_driver_data
+//        },
         {
-                .ident = "GPD Win Max 2 2023",
+                .ident = "GPD Win Max 2",
                 .matches = {
                         DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
                         DMI_MATCH(DMI_PRODUCT_NAME, "G1619-04"),
                 },
+                .driver_data = (void *) &g1619_04_driver_data
         }
 };
 
@@ -34,27 +67,32 @@ struct gpd_fan_private_data {
 
     u16 cached_fan_speed;
     unsigned long last_update;
+
+    struct model_address_config *config;
 };
 
-static int gpd_ecram_read(u16 *val) {
+static int gpd_ecram_read(struct model_address_config *config, u16 offset, u16 *val) {
     int ret = mutex_lock_interruptible(&gpd_fan_locker);
     if (ret)
         return ret;
 
-    outb(0x2E, ECRAM_PORTIO_ADDR_PORT);
-    outb(0x11, ECRAM_PORTIO_DATA_PORT);
-    outb(0x2F, ECRAM_PORTIO_ADDR_PORT);
-    outb((u8) ((536 >> 8) & 0xFF), ECRAM_PORTIO_DATA_PORT);
+    u16 addr_port = config->addr_port;
+    u16 data_port = config->data_port;
 
-    outb(0x2E, ECRAM_PORTIO_ADDR_PORT);
-    outb(0x10, ECRAM_PORTIO_DATA_PORT);
-    outb(0x2F, ECRAM_PORTIO_ADDR_PORT);
-    outb((u8) (536 & 0xFF), ECRAM_PORTIO_DATA_PORT);
+    outb(0x2E, addr_port);
+    outb(0x11, data_port);
+    outb(0x2F, addr_port);
+    outb((u8) ((offset >> 8) & 0xFF), data_port);
 
-    outb(0x2E, ECRAM_PORTIO_ADDR_PORT);
-    outb(0x12, ECRAM_PORTIO_DATA_PORT);
-    outb(0x2F, ECRAM_PORTIO_ADDR_PORT);
-    *val = inw(ECRAM_PORTIO_DATA_PORT);
+    outb(0x2E, addr_port);
+    outb(0x10, data_port);
+    outb(0x2F, addr_port);
+    outb((u8) (offset & 0xFF), data_port);
+
+    outb(0x2E, addr_port);
+    outb(0x12, data_port);
+    outb(0x2F, addr_port);
+    *val = inw(data_port);
 
     mutex_unlock(&gpd_fan_locker);
     return 0;
@@ -63,7 +101,7 @@ static int gpd_ecram_read(u16 *val) {
 static int gpd_read_fan(struct gpd_fan_private_data *data, long *val) {
     if (time_after(jiffies, data->last_update + HZ)) {
         u16 var;
-        int ret = gpd_ecram_read(&var);
+        int ret = gpd_ecram_read(data->config, data->config->fan_speed_read, &var);
         if (ret)
             return ret;
 
@@ -75,41 +113,44 @@ static int gpd_read_fan(struct gpd_fan_private_data *data, long *val) {
     return 0;
 }
 
-static int gpd_ecram_write(u16 offset, u8 value) {
+static int gpd_ecram_write(struct model_address_config *config, u16 offset, u8 value) {
     int ret = mutex_lock_interruptible(&gpd_fan_locker);
     if (ret)
         return ret;
 
-    outb(0x2E, ECRAM_PORTIO_ADDR_PORT);
-    outb(0x11, ECRAM_PORTIO_DATA_PORT);
-    outb(0x2F, ECRAM_PORTIO_ADDR_PORT);
-    outb((u8) ((offset >> 8) & 0xFF), ECRAM_PORTIO_DATA_PORT);
+    u16 addr_port = config->addr_port;
+    u16 data_port = config->data_port;
 
-    outb(0x2E, ECRAM_PORTIO_ADDR_PORT);
-    outb(0x10, ECRAM_PORTIO_DATA_PORT);
-    outb(0x2F, ECRAM_PORTIO_ADDR_PORT);
-    outb((u8) (offset & 0xFF), ECRAM_PORTIO_DATA_PORT);
+    outb(0x2E, addr_port);
+    outb(0x11, data_port);
+    outb(0x2F, addr_port);
+    outb((u8) ((offset >> 8) & 0xFF), data_port);
 
-    outb(0x2E, ECRAM_PORTIO_ADDR_PORT);
-    outb(0x12, ECRAM_PORTIO_DATA_PORT);
-    outb(0x2F, ECRAM_PORTIO_ADDR_PORT);
-    outb(value, ECRAM_PORTIO_DATA_PORT);
+    outb(0x2E, addr_port);
+    outb(0x10, data_port);
+    outb(0x2F, addr_port);
+    outb((u8) (offset & 0xFF), data_port);
+
+    outb(0x2E, addr_port);
+    outb(0x12, data_port);
+    outb(0x2F, addr_port);
+    outb(value, data_port);
 
     mutex_unlock(&gpd_fan_locker);
     return 0;
 }
 
-static int gpd_fan_auto_control(bool enable) {
+static int gpd_fan_auto_control(struct model_address_config *config, bool enable) {
     if (enable)
-        return gpd_ecram_write(0x0275, 0);
+        return gpd_ecram_write(config, config->manual_enable, 0);
     else
-        return gpd_ecram_write(0x0275, 1);
+        return gpd_ecram_write(config, config->manual_enable, 1);
 }
 
-static int gpd_write_fan(u8 val) {
-    u8 var = (u8) (val * 184 / 255);
+static int gpd_write_fan(struct model_address_config *config, u8 val) {
+    u8 var = (u8) (val * config->pwm_max / 255);
 
-    int ret = gpd_ecram_write(6153, var);
+    int ret = gpd_ecram_write(config, config->pwm_write, var);
     if (ret)
         return ret;
     else
@@ -119,21 +160,21 @@ static int gpd_write_fan(u8 val) {
 static int gpd_fan_set_mode(struct gpd_fan_private_data *data) {
     switch (data->mode) {
         case 0: {
-            int ret = gpd_write_fan(255);
+            int ret = gpd_write_fan(data->config, 255);
             if (ret)
                 return ret;
 
-            return gpd_fan_auto_control(false);
+            return gpd_fan_auto_control(data->config, false);
         }
         case 1: {
-            int ret = gpd_write_fan(data->pwm_value);
+            int ret = gpd_write_fan(data->config, data->pwm_value);
             if (ret)
                 return ret;
 
-            return gpd_fan_auto_control(false);
+            return gpd_fan_auto_control(data->config, false);
         }
         case 2:
-            return gpd_fan_auto_control(true);
+            return gpd_fan_auto_control(data->config, true);
         default:
             return -EINVAL;
     }
@@ -206,7 +247,7 @@ gpd_fan_hwmon_write(struct device *dev, enum hwmon_sensor_types type, u32 attr, 
                 u8 var = clamp_val(val, 0, 255);
                 data->pwm_value = var;
                 if (data->mode == 1)
-                    return gpd_write_fan(var);
+                    return gpd_write_fan(data->config, var);
                 else return 0;
             }
             default:
@@ -289,16 +330,9 @@ static struct platform_driver gpd_fan_driver = {
 
 static struct platform_device *gpd_fan_platform_device;
 
-static struct resource gpd_fan_resources[] = {
-        {
-                .start = 0x4E,
-                .end = 0x4F,
-                .flags = IORESOURCE_IO,
-        },
-};
-
 static int __init gpd_fan_init(void) {
     const struct dmi_system_id *match;
+
     match = dmi_first_match(gpd_devices);
     if (!match) {
         pr_err("GPD Devices not supported\n");
@@ -310,6 +344,15 @@ static int __init gpd_fan_init(void) {
             .pwm_value = 255,
             .cached_fan_speed = 0,
             .last_update = jiffies,
+            .config = match->driver_data,
+    };
+
+    struct resource gpd_fan_resources[] = {
+            {
+                    .start = data.config->addr_port,
+                    .end = data.config->data_port,
+                    .flags = IORESOURCE_IO,
+            },
     };
 
     gpd_fan_platform_device = platform_create_bundle(&gpd_fan_driver, gpd_fan_probe, gpd_fan_resources, 1, &data,
