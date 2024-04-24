@@ -8,11 +8,14 @@
 > 
 > Tested on GPD Win Max 2 2023 (7840U) with 6.8.4-zen1
 
-## Should support
+## Should support (WIP)
 
+- GPD Win Mini (7840U)
+- GPD Win Mini (8840U)
 - GPD Win Max 2
 - GPD Win Max 2 2023 (7840U)
 - GPD Win Max 2 2024 (8840U)
+- GPD Win 4 (6800U)
 - GPD Win 4 (7840U)
 
 ## Usage
@@ -34,3 +37,83 @@
     $ echo 127 | sudo tee /sys/devices/platform/gpd_fan/hwmon/hwmon*/pwm1
     ```
   
+## Datasheet
+
+### Credit
+
+- Bilibili: [@范东东咚咚](https://space.bilibili.com/361065271)
+
+<table border="0" cellpadding="0" cellspacing="0">
+  <col />
+  <col span="2" />
+  <col />
+  <col span="2" />
+  <col span="2" />
+  <col />
+  <col />
+  <tr>
+    <th rowspan="2">Device</th>
+    <th colspan="3">DMI</th>
+    <th colspan="2">EC RAM</th>
+    <th rowspan="2">Read (rpm)</th>
+    <th>Write (pwm)</th>
+    <th></th>
+    <th></th>
+  </tr>
+  <tr>
+    <th>Manufacturer</th>
+    <th>Product</th>
+    <th>Version</th>
+    <th>REG_ADDR</th>
+    <th>REG_DATA</th>
+    <th></th>
+    <th>Max</th>
+    <th>Auto (=0)</th>
+  </tr>
+  <tr>
+    <th>GPD Win Mini</th>
+    <td rowspan="6">GPD</td>
+    <td>G1617-01</td>
+    <td></td>
+    <td>0x4E</td>
+    <td>0x4F</td>
+    <td>0x0478</td>
+    <td>0x047A</td>
+    <td align="right">244</td>
+    <td>0x047A</td>
+  </tr>
+  <tr>
+    <th>GPD Win 4 6800U</th>
+    <td rowspan="2">G1618-04</td>
+    <td>Default string</td>
+    <td>0x2E</td>
+    <td>0x2F</td>
+    <td>0xC880</td>
+    <td>0xC311</td>
+    <td align="right">127</td>
+    <td>0xC311</td>
+  </tr>
+  <tr>
+    <th>GPD Win 4 7840U</th>
+    <td>Ver. 1.0</td>
+    <td rowspan="4">0x4E</td>
+    <td rowspan="4">0x4F</td>
+    <td rowspan="4">0x0218</td>
+    <td rowspan="4">0x1809</td>
+    <td rowspan="4">184</td>
+    <td rowspan="4">0x0275</td>
+  </tr>
+  <tr>
+    <th>GPD Win Max 2 6800U</th>
+    <td rowspan="3">G1619-04</td>
+    <td></td>
+  </tr>
+  <tr>
+    <th>GPD Win Max 2 2023 7840U</th>
+    <td></td>
+  </tr>
+  <tr>
+    <th>GPD Win Max 2 2024 8840U</th>
+    <td></td>
+  </tr>
+</table>
