@@ -5,10 +5,10 @@
 > This driver has not been fully tested and reviewed.
 > 
 > It may cause damage to your device. Use at your own risk.
-> 
-> Tested on GPD Win Max 2 2023 (7840U) with 6.8.4-zen1
 
-## Should support (WIP)
+Tested on GPD Win Max 2 2023 (7840U) with 6.8.4-zen1
+
+## Should support
 
 - GPD Win Mini (7840U)
 - GPD Win Mini (8840U)
@@ -43,7 +43,7 @@
 
 - Bilibili: [@范东东咚咚](https://space.bilibili.com/361065271)
 
-<table border="0" cellpadding="0" cellspacing="0">
+<table>
   <col />
   <col span="2" />
   <col />
@@ -79,7 +79,7 @@
     <td>0x4F</td>
     <td>0x0478</td>
     <td>0x047A</td>
-    <td align="right">244</td>
+    <td>244</td>
     <td>0x047A</td>
   </tr>
   <tr>
@@ -90,7 +90,7 @@
     <td>0x2F</td>
     <td>0xC880</td>
     <td>0xC311</td>
-    <td align="right">127</td>
+    <td>127</td>
     <td>0xC311</td>
   </tr>
   <tr>

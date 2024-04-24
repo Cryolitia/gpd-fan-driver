@@ -26,6 +26,7 @@
 
         shellHook = ''
           export KERNEL_SRC=${pkgs.linuxPackages_zen.kernel.dev}/lib/modules/${pkgs.linuxPackages_zen.kernel.modDirVersion}/build
+          zsh
         '';
       };
     };
