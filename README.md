@@ -37,6 +37,8 @@ Tested on GPD Win Max 2 2023 (7840U) with 6.8.4-zen1
     $ echo 127 | sudo tee /sys/devices/platform/gpd_fan/hwmon/hwmon*/pwm1
     ```
 
+More about fields in hwmon subsystem, please read https://www.kernel.org/doc/Documentation/hwmon/sysfs-interface .
+
 ## Install
 
 - Arch Linux(thx @dreirund): [gpd-fan-driver-dkms-git](https://aur.archlinux.org/packages/gpd-fan-driver-dkms-git)
