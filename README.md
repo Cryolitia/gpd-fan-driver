@@ -63,9 +63,7 @@ More about fields in hwmon subsystem, please read https://www.kernel.org/doc/Doc
     <th colspan="3">DMI</th>
     <th colspan="2">EC RAM</th>
     <th rowspan="2">Read (rpm)</th>
-    <th>Write (pwm)</th>
-    <th></th>
-    <th></th>
+    <th colspan="3">Write (pwm)</th>
   </tr>
   <tr>
     <th>Manufacturer</th>
