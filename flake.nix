@@ -57,6 +57,8 @@
       devShells."${system}".default = pkgs.mkShell {
         buildInputs = with pkgs; [
           linuxPackages_zen.kernel.dev
+          flex
+          bison
         ];
 
         shellHook = ''

@@ -23,10 +23,14 @@ struct driver_private_data {
     enum FUN_PWM_ENABLE pwm_enable;
     u8 pwm_value;
 
-    u16 cached_fan_speed;
+    u16 fan_speed_cached;
+    u8 read_pwm_cached;
+
     // minium 1000 mill seconds
     u32 update_interval_per_second;
-    unsigned long last_update;
+
+    unsigned long fan_speed_last_update;
+    unsigned long read_pwm_last_update;
 
     const struct model_quirk *const quirk;
 };
@@ -43,9 +47,11 @@ struct model_ec_address {
 struct model_quirk {
     const struct model_ec_address address;
 
-    int (*const read_rpm)(struct driver_private_data *, long *);
+    int (*const read_rpm)(struct driver_private_data *, u16 *);
 
-    int (*const set_pwm_enable)(const struct driver_private_data *, enum FUN_PWM_ENABLE);
+    int (*const set_pwm_enable)(struct driver_private_data *, enum FUN_PWM_ENABLE);
+
+    int (*const read_pwm)(struct driver_private_data *, u8 *);
 
     int (*const write_pwm)(const struct driver_private_data *, u8);
 };
@@ -104,7 +110,23 @@ static int gpd_ecram_write(const struct model_ec_address *const address, const u
     return 0;
 }
 
-static int gpd_read_rpm_uncached(const struct driver_private_data *const data, long *const val) {
+#define DEFINE_GPD_READ_CACHED(name, type) static int gpd_read_cached_ ## name (struct driver_private_data *const data,  \
+                               int (*read_uncached)(const struct driver_private_data *, type *)) {  \
+    if (time_after(jiffies, data-> name ## _last_update + HZ * data->update_interval_per_second)) {  \
+        type var;  \
+        int ret = read_uncached(data, &var);  \
+        if (ret)  \
+            return ret;  \
+        data-> name ## _cached = var;  \
+        data-> name ## _last_update = jiffies;  \
+    }  \
+    return 0;  \
+}
+
+DEFINE_GPD_READ_CACHED(fan_speed, u16);
+DEFINE_GPD_READ_CACHED(read_pwm, u8);
+
+static int gpd_read_rpm_uncached(const struct driver_private_data *const data, u16 *const val) {
     u8 high, low;
     int ret;
     const struct model_ec_address *const address = &data->quirk->address;
@@ -120,24 +142,15 @@ static int gpd_read_rpm_uncached(const struct driver_private_data *const data, l
     return 0;
 }
 
-static int gpd_read_rpm_cached(struct driver_private_data *const data, long *const val,
-                               int (*read_rpm_uncached)(const struct driver_private_data *, long *)) {
-    if (time_after(jiffies, data->last_update + HZ * data->update_interval_per_second)) {
-        long var;
-        int ret = read_rpm_uncached(data, &var);
-        if (ret)
-            return ret;
-
-        data->cached_fan_speed = var;
-        data->last_update = jiffies;
-    }
-
-    *val = data->cached_fan_speed;
-    return 0;
+static int gpd_read_rpm(struct driver_private_data *const data, u16 *const val) {
+    int ret = gpd_read_cached_fan_speed(data, gpd_read_rpm_uncached);
+    *val = data->fan_speed_cached;
+    return ret;
 }
 
-static int gpd_read_rpm(struct driver_private_data *const data, long *const val) {
-    return gpd_read_rpm_cached(data, val, gpd_read_rpm_uncached);
+static int gpd_read_pwm(struct driver_private_data *const data, u8 *const val) {
+    *val = data->pwm_value;
+    return 0;
 }
 
 static int gpd_write_pwm(const struct driver_private_data *const data, const u8 val) {
@@ -146,7 +159,7 @@ static int gpd_write_pwm(const struct driver_private_data *const data, const u8 
     return gpd_ecram_write(address, address->pwm_write, actual);
 }
 
-static int gpd_win_mini_set_pwm_enable(const struct driver_private_data *const data,
+static int gpd_win_mini_set_pwm_enable(struct driver_private_data *const data,
                                        const enum FUN_PWM_ENABLE pwm_enable) {
     switch (pwm_enable) {
         case DISABLE:
@@ -177,10 +190,11 @@ static const struct model_quirk gpd_win_mini_quirk = {
     },
     .read_rpm = gpd_read_rpm,
     .set_pwm_enable = gpd_win_mini_set_pwm_enable,
+    .read_pwm = gpd_read_pwm,
     .write_pwm = gpd_win_mini_write_pwm,
 };
 
-static int gpd_win4_read_rpm_uncached(const struct driver_private_data *const data, long *const val) {
+static int gpd_win4_read_rpm_uncached(const struct driver_private_data *const data, u16 *const val) {
     const struct model_ec_address *const address = &data->quirk->address;
 
     u8 PWMCTR;
@@ -207,8 +221,10 @@ static int gpd_win4_read_rpm_uncached(const struct driver_private_data *const da
     return 0;
 }
 
-static int gpd_win4_read_rpm(struct driver_private_data *const data, long *const val) {
-    return gpd_read_rpm_cached(data, val, gpd_win4_read_rpm_uncached);
+static int gpd_win4_read_rpm(struct driver_private_data *const data, u16 *const val) {
+    int ret = gpd_read_cached_fan_speed(data, gpd_win4_read_rpm_uncached);
+    *val = data->fan_speed_cached;
+    return ret;
 }
 
 static const struct model_quirk gpd_win4_quirk = {
@@ -223,11 +239,12 @@ static const struct model_quirk gpd_win4_quirk = {
     .read_rpm = gpd_win4_read_rpm,
     // same as GPD Win Mini
     .set_pwm_enable = gpd_win_mini_set_pwm_enable,
+    .read_pwm = gpd_read_pwm,
     // same as GPD Win Mini
     .write_pwm = gpd_win_mini_write_pwm,
 };
 
-static int gpd_wm2_read_rpm_uncached(const struct driver_private_data *const data, long *const val) {
+static int gpd_wm2_read_rpm_uncached(const struct driver_private_data *const data, u16 *const val) {
     const struct model_ec_address *const address = &data->quirk->address;
     for (u16 pwm_ctr_offset = 0x1841; pwm_ctr_offset <= 0x1843; pwm_ctr_offset++) {
         u8 PWMCTR;
@@ -239,11 +256,30 @@ static int gpd_wm2_read_rpm_uncached(const struct driver_private_data *const dat
     return gpd_read_rpm_uncached(data, val);
 }
 
-static int gpd_wm2_read_rpm(struct driver_private_data *const data, long *const val) {
-    return gpd_read_rpm_cached(data, val, gpd_wm2_read_rpm_uncached);
+static int gpd_wm2_read_rpm(struct driver_private_data *const data, u16 *const val) {
+    int ret = gpd_read_cached_fan_speed(data, gpd_wm2_read_rpm_uncached);
+    *val = data->fan_speed_cached;
+    return ret;
 }
 
-static int gpd_wm2_set_pwm_enable(const struct driver_private_data *const data, const enum FUN_PWM_ENABLE enable) {
+static int gpd_wm2_read_pwm_uncached(const struct driver_private_data *const data, u8 *const val) {
+    const struct model_ec_address *const address = &data->quirk->address;
+    u8 var;
+
+    int ret = gpd_ecram_read(address, address->pwm_write, &var);
+
+    *val = var * 255 / address->pwm_max;
+
+    return ret;
+}
+
+static int gpd_wm2_read_pwm(struct driver_private_data *const data, u8 *const val) {
+    int ret = gpd_read_cached_read_pwm(data, gpd_wm2_read_pwm_uncached);
+    *val = data->read_pwm_cached;
+    return ret;
+}
+
+static int gpd_wm2_set_pwm_enable(struct driver_private_data *const data, const enum FUN_PWM_ENABLE enable) {
     const struct model_ec_address *const address = &data->quirk->address;
     switch (enable) {
         case DISABLE: {
@@ -260,8 +296,14 @@ static int gpd_wm2_set_pwm_enable(const struct driver_private_data *const data, 
 
             return gpd_ecram_write(address, address->manual_control_enable, 1);
         }
-        case AUTOMATIC:
-            return gpd_ecram_write(address, address->manual_control_enable, 0);
+        case AUTOMATIC: {
+            int ret = gpd_ecram_write(address, address->manual_control_enable, 0);
+
+            // Immediately refresh the PWM value
+            gpd_read_cached_read_pwm(data, gpd_wm2_read_pwm_uncached);
+
+            return ret;
+        }
     }
     return 0;
 }
@@ -284,6 +326,7 @@ static const struct model_quirk gpd_wm2_quirk = {
     },
     .read_rpm = gpd_wm2_read_rpm,
     .set_pwm_enable = gpd_wm2_set_pwm_enable,
+    .read_pwm = gpd_wm2_read_pwm,
     .write_pwm = gpd_wm2_write_pwm,
 };
 
@@ -354,8 +397,12 @@ gpd_fan_hwmon_read(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 
     if (type == hwmon_fan) {
         switch (attr) {
-            case hwmon_fan_input:
-                return data->quirk->read_rpm(data, val);
+            case hwmon_fan_input: {
+                u16 var;
+                int ret = data->quirk->read_rpm(data, &var);
+                *val = var;
+                return ret;
+            }
         }
     } else if (type == hwmon_pwm) {
         switch (attr) {
@@ -365,9 +412,12 @@ gpd_fan_hwmon_read(struct device *dev, enum hwmon_sensor_types type, u32 attr,
             case hwmon_pwm_enable:
                 *val = data->pwm_enable;
                 return 0;
-            case hwmon_pwm_input:
-                *val = data->pwm_value;
-                return 0;
+            case hwmon_pwm_input: {
+                u8 var;
+                int ret = data->quirk->read_pwm(data, &var);
+                *val = var;
+                return ret;
+            }
         }
     } else if (type == hwmon_chip) {
         switch (attr) {
@@ -538,9 +588,11 @@ static int __init gpd_fan_init(void) {
     struct driver_private_data data = {
         .pwm_enable = AUTOMATIC,
         .pwm_value = 255,
-        .cached_fan_speed = 0,
+        .fan_speed_cached = 0,
+        .read_pwm_cached = 0,
         .update_interval_per_second = 1,
-        .last_update = jiffies,
+        .fan_speed_last_update = jiffies,
+        .read_pwm_last_update = jiffies,
         .quirk = match->driver_data,
     };
 
