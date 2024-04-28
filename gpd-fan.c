@@ -1,4 +1,5 @@
 #include <linux/acpi.h>
+#include <linux/debugfs.h>
 #include <linux/dmi.h>
 #include <linux/hwmon.h>
 #include <linux/hwmon-sysfs.h>
@@ -419,35 +420,74 @@ static struct hwmon_chip_info gpd_fan_chip_info = {
     .info = gpd_fan_hwmon_channel_info
 };
 
+struct dentry *DEBUG_FS_ENTRY = NULL;
+
+static int debugfs_manual_control_get(void *data, u64 *val)
+{
+    struct model_ec_address *address = data;
+    u8 u8_val;
+
+    int ret = gpd_ecram_read(address, address->manual_control_enable, &u8_val);
+    *val = (u64) u8_val;
+    return ret;
+}
+
+static int debugfs_manual_control_set(void *data, u64 val)
+{
+    struct model_ec_address *address = data;
+    return gpd_ecram_write(address, address->manual_control_enable, clamp_val(val, 0, 255));
+}
+
+static int debugfs_pwm_get(void *data, u64 *val)
+{
+    struct model_ec_address *address = data;
+    u8 u8_val;
+
+    int ret = gpd_ecram_read(address, address->pwm_write, &u8_val);
+    *val = (u64) u8_val;
+    return ret;
+}
+
+static int debugfs_pwm_set(void *data, u64 val)
+{
+    struct model_ec_address *address = data;
+    return gpd_ecram_write(address, address->pwm_write, clamp_val(val, 0, 255));
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(debugfs_manual_control_fops, debugfs_manual_control_get, debugfs_manual_control_set, "%llu\n");
+DEFINE_DEBUGFS_ATTRIBUTE(debugfs_pwm_fops, debugfs_pwm_get, debugfs_pwm_set, "%llu\n");
+
 static int gpd_fan_probe(struct platform_device *pdev) {
     struct device *dev = &pdev->dev;
-    const struct dmi_system_id *match;
     struct driver_private_data *data;
 
-    match = dmi_first_match(gpd_devices);
-    if (!match) {
-        pr_err("GPD Devices not supported\n");
-        return -ENODEV;
-    }
-
     data = dev_get_platdata(&pdev->dev);
-    if (!data)
+    if (IS_ERR_OR_NULL(data))
         return -ENODEV;
 
-    const struct resource *res = platform_get_resource(pdev, IORESOURCE_IO, 0);
-    if (!res) {
+    const struct resource *plat_res = platform_get_resource(pdev, IORESOURCE_IO, 0);
+    if (IS_ERR_OR_NULL(plat_res)) {
         pr_err("Failed to get platform resource\n");
         return -ENODEV;
     }
 
-    if (!devm_request_region(dev, res->start, resource_size(res), DRIVER_NAME)) {
+    const struct resource *region_res = devm_request_region(dev, plat_res->start, resource_size(plat_res), DRIVER_NAME);
+    if (IS_ERR_OR_NULL(region_res)) {
         pr_err("Failed to request region\n");
         return -EBUSY;
     }
 
-    if (!devm_hwmon_device_register_with_info(dev, DRIVER_NAME, data, &gpd_fan_chip_info, NULL)) {
+    const struct device *dev_reg = devm_hwmon_device_register_with_info(dev, DRIVER_NAME, data, &gpd_fan_chip_info, NULL);
+    if (IS_ERR_OR_NULL(dev_reg)) {
         pr_err("Failed to register hwmon device\n");
         return -EBUSY;
+    }
+
+    struct dentry *debug_fs_entry = debugfs_create_dir(DRIVER_NAME, NULL);
+    if (!IS_ERR(debug_fs_entry)) {
+        DEBUG_FS_ENTRY = debug_fs_entry;
+        debugfs_create_file_size("manual_control_reg", S_IRUSR | S_IWUSR, DEBUG_FS_ENTRY, (void*)&data->quirk->address, &debugfs_manual_control_fops,sizeof(u8));
+        debugfs_create_file_size("pwm_reg", S_IRUSR | S_IWUSR, DEBUG_FS_ENTRY, (void*)&data->quirk->address, &debugfs_pwm_fops,sizeof(u8));
     }
 
     pr_info("GPD Devices fan driver probed\n");
@@ -459,6 +499,11 @@ static int gpd_fan_remove(__attribute__((unused)) struct platform_device *pdev) 
 
     data->pwm_enable = AUTOMATIC;
     data->quirk->set_pwm_enable(data, AUTOMATIC);
+
+    if (!IS_ERR_OR_NULL(DEBUG_FS_ENTRY)) {
+        debugfs_remove_recursive(DEBUG_FS_ENTRY);
+        DEBUG_FS_ENTRY = NULL;
+    }
 
     pr_info("GPD Devices fan driver removed\n");
     return 0;
@@ -478,7 +523,7 @@ static int __init gpd_fan_init(void) {
     const struct dmi_system_id *match;
 
     match = dmi_first_match(gpd_devices);
-    if (!match) {
+    if (IS_ERR_OR_NULL(match)) {
         pr_err("GPD Devices not supported\n");
         return -ENODEV;
     }
@@ -503,7 +548,7 @@ static int __init gpd_fan_init(void) {
                                                      sizeof(struct driver_private_data));
     if (IS_ERR(gpd_fan_platform_device)) {
         pr_err("Failed to create platform device\n");
-        return (int) PTR_ERR(gpd_fan_platform_device);
+        return PTR_ERR(gpd_fan_platform_device);
     }
 
     pr_info("GPD Devices fan driver loaded\n");
