@@ -36,7 +36,12 @@ Tested on GPD Win Max 2 2023 (7840U) with 6.8.4-zen1
     # range: 0-255
     $ echo 127 | sudo tee /sys/devices/platform/gpd_fan/hwmon/hwmon*/pwm1
     ```
-  
+
+## Install
+
+- Arch Linux(thx @dreirund): [gpd-fan-driver-dkms-git](https://aur.archlinux.org/packages/gpd-fan-driver-dkms-git)
+- NixOS: `nixosModules.default`
+
 ## Datasheet
 
 ### Credit
