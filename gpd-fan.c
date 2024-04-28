@@ -24,6 +24,8 @@ struct driver_private_data {
     u8 pwm_value;
 
     u16 cached_fan_speed;
+    // minium 1000 mill seconds
+    u32 update_interval_per_second;
     unsigned long last_update;
 
     const struct model_quirk *const quirk;
@@ -120,7 +122,7 @@ static int gpd_read_rpm_uncached(const struct driver_private_data *const data, l
 
 static int gpd_read_rpm_cached(struct driver_private_data *const data, long *const val,
                                int (*read_rpm_uncached)(const struct driver_private_data *, long *)) {
-    if (time_after(jiffies, data->last_update + HZ)) {
+    if (time_after(jiffies, data->last_update + HZ * data->update_interval_per_second)) {
         long var;
         int ret = read_rpm_uncached(data, &var);
         if (ret)
@@ -339,7 +341,7 @@ gpd_fan_hwmon_is_visible(__attribute__((unused)) const void *drvdata, enum hwmon
                 return S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
         }
     } else if (type == hwmon_chip && attr == hwmon_chip_update_interval) {
-        return S_IRUSR | S_IRGRP | S_IROTH;
+        return S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
     }
     return 0;
 }
@@ -370,7 +372,7 @@ gpd_fan_hwmon_read(struct device *dev, enum hwmon_sensor_types type, u32 attr,
     } else if (type == hwmon_chip) {
         switch (attr) {
             case hwmon_chip_update_interval:
-                *val = 1000;
+                *val = 1000 * data->update_interval_per_second;
                 return 0;
         }
     }
@@ -395,8 +397,14 @@ gpd_fan_hwmon_write(struct device *dev, enum hwmon_sensor_types type, u32 attr,
                 data->pwm_value = var;
                 return data->quirk->write_pwm(data, var);
             }
-            default:
-                return -EINVAL;
+        }
+    } else if (type == hwmon_chip) {
+        if (attr == hwmon_chip_update_interval) {
+            int interval = val / 1000;
+            if (interval < 1)
+                interval = 1;
+            data->update_interval_per_second = interval;
+            return 0;
         }
     }
     return -EINVAL;
@@ -422,8 +430,7 @@ static struct hwmon_chip_info gpd_fan_chip_info = {
 
 struct dentry *DEBUG_FS_ENTRY = NULL;
 
-static int debugfs_manual_control_get(void *data, u64 *val)
-{
+static int debugfs_manual_control_get(void *data, u64 *val) {
     struct model_ec_address *address = data;
     u8 u8_val;
 
@@ -432,14 +439,12 @@ static int debugfs_manual_control_get(void *data, u64 *val)
     return ret;
 }
 
-static int debugfs_manual_control_set(void *data, u64 val)
-{
+static int debugfs_manual_control_set(void *data, u64 val) {
     struct model_ec_address *address = data;
     return gpd_ecram_write(address, address->manual_control_enable, clamp_val(val, 0, 255));
 }
 
-static int debugfs_pwm_get(void *data, u64 *val)
-{
+static int debugfs_pwm_get(void *data, u64 *val) {
     struct model_ec_address *address = data;
     u8 u8_val;
 
@@ -448,8 +453,7 @@ static int debugfs_pwm_get(void *data, u64 *val)
     return ret;
 }
 
-static int debugfs_pwm_set(void *data, u64 val)
-{
+static int debugfs_pwm_set(void *data, u64 val) {
     struct model_ec_address *address = data;
     return gpd_ecram_write(address, address->pwm_write, clamp_val(val, 0, 255));
 }
@@ -477,7 +481,8 @@ static int gpd_fan_probe(struct platform_device *pdev) {
         return -EBUSY;
     }
 
-    const struct device *dev_reg = devm_hwmon_device_register_with_info(dev, DRIVER_NAME, data, &gpd_fan_chip_info, NULL);
+    const struct device *dev_reg = devm_hwmon_device_register_with_info(dev, DRIVER_NAME, data, &gpd_fan_chip_info,
+                                                                        NULL);
     if (IS_ERR_OR_NULL(dev_reg)) {
         pr_err("Failed to register hwmon device\n");
         return -EBUSY;
@@ -486,8 +491,10 @@ static int gpd_fan_probe(struct platform_device *pdev) {
     struct dentry *debug_fs_entry = debugfs_create_dir(DRIVER_NAME, NULL);
     if (!IS_ERR(debug_fs_entry)) {
         DEBUG_FS_ENTRY = debug_fs_entry;
-        debugfs_create_file_size("manual_control_reg", S_IRUSR | S_IWUSR, DEBUG_FS_ENTRY, (void*)&data->quirk->address, &debugfs_manual_control_fops,sizeof(u8));
-        debugfs_create_file_size("pwm_reg", S_IRUSR | S_IWUSR, DEBUG_FS_ENTRY, (void*)&data->quirk->address, &debugfs_pwm_fops,sizeof(u8));
+        debugfs_create_file_size("manual_control_reg", S_IRUSR | S_IWUSR, DEBUG_FS_ENTRY,
+                                 (void *) &data->quirk->address, &debugfs_manual_control_fops, sizeof(u8));
+        debugfs_create_file_size("pwm_reg", S_IRUSR | S_IWUSR, DEBUG_FS_ENTRY, (void *) &data->quirk->address,
+                                 &debugfs_pwm_fops, sizeof(u8));
     }
 
     pr_info("GPD Devices fan driver probed\n");
@@ -532,6 +539,7 @@ static int __init gpd_fan_init(void) {
         .pwm_enable = AUTOMATIC,
         .pwm_value = 255,
         .cached_fan_speed = 0,
+        .update_interval_per_second = 1,
         .last_update = jiffies,
         .quirk = match->driver_data,
     };
