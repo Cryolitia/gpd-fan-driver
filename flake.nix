@@ -54,6 +54,8 @@
         });
     in
     {
+      inherit modulePackage;
+      
       devShells."${system}".default = pkgs.mkShell {
         buildInputs = with pkgs; [
           linuxPackages_zen.kernel.dev
