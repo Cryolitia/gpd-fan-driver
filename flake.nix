@@ -26,7 +26,7 @@
           pname = "gpd-fan-driver";
           version = "0-unstable";
 
-          src = ./.;
+          src = lib.cleanSource ./.;
 
           hardeningDisable = [ "pic" ];
 
