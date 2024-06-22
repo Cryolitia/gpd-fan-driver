@@ -345,7 +345,7 @@ static const struct dmi_system_id gpd_devices[] = {
         .matches = {
             DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
             DMI_MATCH(DMI_PRODUCT_NAME, "G1618-04"),
-            DMI_MATCH(DMI_PRODUCT_VERSION, "Default string"),
+            DMI_MATCH(DMI_BOARD_VERSION, "Default string"),
         },
         .driver_data = (void *) &gpd_win4_quirk,
     },
@@ -354,7 +354,7 @@ static const struct dmi_system_id gpd_devices[] = {
         .matches = {
             DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
             DMI_MATCH(DMI_PRODUCT_NAME, "G1618-04"),
-            DMI_MATCH(DMI_PRODUCT_VERSION, "Ver. 1.0"),
+            DMI_MATCH(DMI_BOARD_VERSION, "Ver. 1.0"),
         },
         .driver_data = (void *) &gpd_wm2_quirk,
     },
