@@ -368,6 +368,7 @@ static const struct dmi_system_id gpd_devices[] = {
         },
         .driver_data = (void *) &gpd_wm2_quirk,
     },
+    {}
 };
 
 static umode_t
