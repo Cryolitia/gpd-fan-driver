@@ -11,6 +11,9 @@
 
 #define DRIVER_NAME "gpdfan"
 
+static char *gpd_fan_model = "";
+module_param(gpd_fan_model, charp, 0444);
+
 static DEFINE_MUTEX(gpd_fan_locker);
 
 enum FUN_PWM_ENABLE {
@@ -45,6 +48,8 @@ struct model_ec_address {
 };
 
 struct model_quirk {
+    const char *model_name;
+
     const struct model_ec_address address;
 
     int (*const read_rpm)(struct driver_private_data *, u16 *);
@@ -180,6 +185,7 @@ static int gpd_win_mini_write_pwm(const struct driver_private_data *const data, 
 }
 
 static const struct model_quirk gpd_win_mini_quirk = {
+    .model_name = "win_mini",
     .address = {
         .addr_port = 0x4E,
         .data_port = 0x4F,
@@ -228,6 +234,7 @@ static int gpd_win4_read_rpm(struct driver_private_data *const data, u16 *const 
 }
 
 static const struct model_quirk gpd_win4_quirk = {
+    .model_name = "win4",
     .address = {
         .addr_port = 0x2E,
         .data_port = 0x2F,
@@ -316,6 +323,7 @@ static int gpd_wm2_write_pwm(const struct driver_private_data *const data, const
 }
 
 static const struct model_quirk gpd_wm2_quirk = {
+    .model_name = "wm2",
     .address = {
         .addr_port = 0x4E,
         .data_port = 0x4F,
@@ -369,6 +377,13 @@ static const struct dmi_system_id gpd_devices[] = {
         .driver_data = (void *) &gpd_wm2_quirk,
     },
     {}
+};
+
+static const struct model_quirk *gpd_module_quirks[] = {
+    &gpd_win_mini_quirk,
+    &gpd_win4_quirk,
+    &gpd_wm2_quirk,
+    NULL
 };
 
 static umode_t
@@ -578,12 +593,24 @@ static struct platform_driver gpd_fan_driver = {
 static struct platform_device *gpd_fan_platform_device;
 
 static int __init gpd_fan_init(void) {
-    const struct dmi_system_id *match;
+    const struct model_quirk *match = NULL;
 
-    match = dmi_first_match(gpd_devices);
+    for (const struct model_quirk **p = gpd_module_quirks; *p != NULL; p++) {
+        if (strcmp(gpd_fan_model, (*p)->model_name) == 0) {
+            match = *p;
+            break;
+        }
+    }
+
+    if (match == NULL) {
+        match = dmi_first_match(gpd_devices)->driver_data;
+    }
+
     if (IS_ERR_OR_NULL(match)) {
         pr_err("GPD Devices not supported\n");
         return -ENODEV;
+    } else {
+        pr_info("Loading GPD fan model quirk: %s\n", match->model_name);
     }
 
     struct driver_private_data data = {
@@ -594,7 +621,7 @@ static int __init gpd_fan_init(void) {
         .update_interval_per_second = 1,
         .fan_speed_last_update = jiffies,
         .read_pwm_last_update = jiffies,
-        .quirk = match->driver_data,
+        .quirk = match,
     };
 
     struct resource gpd_fan_resources[] = {
@@ -607,6 +634,7 @@ static int __init gpd_fan_init(void) {
 
     gpd_fan_platform_device = platform_create_bundle(&gpd_fan_driver, gpd_fan_probe, gpd_fan_resources, 1, &data,
                                                      sizeof(struct driver_private_data));
+
     if (IS_ERR(gpd_fan_platform_device)) {
         pr_err("Failed to create platform device\n");
         return PTR_ERR(gpd_fan_platform_device);

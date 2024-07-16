@@ -39,6 +39,18 @@ Tested on GPD Win Max 2 2023 (7840U) with 6.8.4-zen1
 
 More about fields in hwmon subsystem, please read https://www.kernel.org/doc/Documentation/hwmon/sysfs-interface .
 
+This driver should auto detected your device, if not, please report an issue.
+
+For testing not detected device, use model parameter `gpd_fan_model` to specify your device.
+
+Supported models:
+
+- wm2
+- win4
+- win_mini
+
+```bash
+
 ## Install
 
 - Arch Linux(thx @dreirund): [gpd-fan-driver-dkms-git](https://aur.archlinux.org/packages/gpd-fan-driver-dkms-git)
