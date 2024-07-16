@@ -56,6 +56,8 @@ Supported models:
 - Arch Linux(thx @dreirund): [gpd-fan-driver-dkms-git](https://aur.archlinux.org/packages/gpd-fan-driver-dkms-git)
 - NixOS: `nixosModules.default`
 
+```
+
 ## Datasheet
 
 ### Credit
