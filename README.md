@@ -49,14 +49,10 @@ Supported models:
 - win4
 - win_mini
 
-```bash
-
 ## Install
 
 - Arch Linux(thx @dreirund): [gpd-fan-driver-dkms-git](https://aur.archlinux.org/packages/gpd-fan-driver-dkms-git)
 - NixOS: `nixosModules.default`
-
-```
 
 ## Datasheet
 
