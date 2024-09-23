@@ -8,6 +8,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/version.h>
 
 #define DRIVER_NAME "gpdfan"
 
@@ -567,7 +568,11 @@ static int gpd_fan_probe(struct platform_device *pdev) {
     return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
 static int gpd_fan_remove(__attribute__((unused)) struct platform_device *pdev) {
+#else
+static void gpd_fan_remove(__attribute__((unused)) struct platform_device *pdev) {
+#endif
     struct driver_private_data *data = dev_get_platdata(&pdev->dev);
 
     data->pwm_enable = AUTOMATIC;
@@ -579,7 +584,9 @@ static int gpd_fan_remove(__attribute__((unused)) struct platform_device *pdev) 
     }
 
     pr_info("GPD Devices fan driver removed\n");
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
     return 0;
+#endif
 }
 
 static struct platform_driver gpd_fan_driver = {
