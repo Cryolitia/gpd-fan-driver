@@ -173,7 +173,8 @@ static int gpd_win_mini_set_pwm_enable(struct driver_private_data *const data,
         case MANUAL:
             return gpd_write_pwm(data, data->pwm_value);
         case AUTOMATIC:
-            return gpd_write_pwm(data, 0);
+            const struct model_ec_address *const address = &data->quirk->address;
+            return gpd_ecram_write(address, address->pwm_write, 0);
     }
     return 0;
 }
