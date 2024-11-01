@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0+
-// Copyright (c) 2024 Cryolitia PukNgae
 
-/*
+/* Platform driver for GPD devices that expose fan control via hwmon sysfs.
+ *
+ * Fan control is provided via pwm interface in the range [0-255].
+ * Each model has a different range in the EC, the written value is scaled to accommodate for that.
+ *
  * Based on this repo:
  * https://github.com/Cryolitia/gpd-fan-driver
+ *
+ * Copyright (c) 2024 Cryolitia PukNgae
  */
 
 #include <linux/acpi.h>
@@ -24,8 +29,6 @@ module_param(gpd_fan_model, charp, 0444);
 // EC read/write locker
 // Should never access EC at the same time, otherwise system down.
 static DEFINE_MUTEX(gpd_fan_lock);
-
-// general struct declare start
 
 enum FAN_PWM_ENABLE {
 	DISABLE = 0,
@@ -66,10 +69,6 @@ struct gpd_model_quirk {
 	int (*write_pwm)(const struct gpd_driver_priv *data, u8 val);
 };
 
-// general struct declare end
-
-// model quirk function declare start
-
 static s32 gpd_read_rpm(struct gpd_driver_priv *data);
 static s16 gpd_read_pwm(struct gpd_driver_priv *data);
 static int gpd_write_pwm(const struct gpd_driver_priv *data, u8 val);
@@ -85,10 +84,6 @@ static s16 gpd_wm2_read_pwm(struct gpd_driver_priv *data);
 static int gpd_wm2_set_pwm_enable(struct gpd_driver_priv *data,
 				  enum FAN_PWM_ENABLE enable);
 static int gpd_wm2_write_pwm(const struct gpd_driver_priv *data, u8 val);
-
-// model quirk function declare end
-
-// model quirk struct declare start
 
 static const struct gpd_model_quirk gpd_win_mini_quirk = {
 	.model_name	= "win_mini",
@@ -140,8 +135,6 @@ static const struct gpd_model_quirk gpd_wm2_quirk = {
 	.write_pwm	= gpd_wm2_write_pwm,
 };
 
-// model quirk struct declare end
-
 static const struct dmi_system_id gpd_devices[] = {
 	{
 		// GPD Win Mini
@@ -186,8 +179,6 @@ static const struct dmi_system_id gpd_devices[] = {
 static const struct gpd_model_quirk *gpd_module_quirks[] = {
 	&gpd_win_mini_quirk, &gpd_win4_quirk, &gpd_wm2_quirk, NULL
 };
-
-// device EC truly access function start
 
 static int gpd_ecram_read(const struct gpd_model_ec_address *address,
 			  u16 offset, u8 *val)
@@ -250,10 +241,6 @@ static int gpd_ecram_write(const struct gpd_model_ec_address *address,
 	mutex_unlock(&gpd_fan_lock);
 	return 0;
 }
-
-// device EC truly access function end
-
-// device quirk function implement start
 
 static s32
 gpd_read_cached_fan_speed(struct gpd_driver_priv *data,
@@ -334,7 +321,8 @@ static int gpd_win_mini_set_pwm_enable(struct gpd_driver_priv *data,
 	case MANUAL:
 		return gpd_write_pwm(data, data->pwm_value);
 	case AUTOMATIC:
-		return gpd_write_pwm(data, 0);
+		const struct gpd_model_ec_address *address = &data->quirk->address;
+		return gpd_ecram_write(address, address->pwm_write, 0);
 	}
 	return 0;
 }
@@ -463,10 +451,6 @@ static int gpd_wm2_write_pwm(const struct gpd_driver_priv *data, u8 val)
 	return 0;
 }
 
-// device quirk function implement end
-
-// hwmon subsystem start
-
 static umode_t gpd_fan_hwmon_is_visible(__always_unused const void *drvdata,
 					enum hwmon_sensor_types type, u32 attr,
 					__always_unused int channel)
@@ -564,8 +548,6 @@ static struct hwmon_chip_info gpd_fan_chip_info = {
 	.ops	= &gpd_fan_ops,
 	.info	= gpd_fan_hwmon_channel_info
 };
-
-// hwmon subsystem end
 
 static int gpd_fan_probe(struct platform_device *pdev)
 {
