@@ -129,7 +129,8 @@ static const struct dmi_system_id dmi_table[] = {
 					DMI_MATCH(DMI_PRODUCT_NAME, "G1618-04"),
 					DMI_MATCH(DMI_BOARD_VERSION, "Ver. 1.0"),
 				},
-		.driver_data	= &gpd_wm2_quirk,	/* Since 7840U, win4 uses the same quirk as wm2 */
+		// Since 7840U, win4 uses the same quirk as wm2
+		.driver_data	= &gpd_wm2_quirk,
 	},
 	{
 		// GPD Win Max 2 with Ryzen 6800U
@@ -250,9 +251,8 @@ static s32 gpd_win4_read_rpm_uncached(void)
 		if (chip_id == 0x55) {
 			u8 chip_ver;
 
-			if (gpd_ecram_read(quirk, 0x1060, &chip_ver)) {
+			if (gpd_ecram_read(quirk, 0x1060, &chip_ver))
 				gpd_ecram_write(quirk, 0x1060, chip_ver | 0x80);
-			}
 		}
 	}
 	return ret;
@@ -388,6 +388,7 @@ static int gpd_win_mini_set_pwm_enable(enum FAN_PWM_ENABLE pwm_enable)
 		return gpd_generic_write_pwm(gpd_driver_priv.pwm_value);
 	case AUTOMATIC:
 		const struct gpd_board_quirk *quirk = gpd_driver_priv.quirk;
+
 		return gpd_ecram_write(quirk, quirk->pwm_write, 0);
 	}
 	return 0;
