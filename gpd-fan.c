@@ -20,15 +20,21 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 
-#define DRIVER_NAME	"gpdfan"
+#define DRIVER_NAME "gpdfan"
 
 // model param, see document
-static char *gpd_fan_model = "";
-module_param(gpd_fan_model, charp, 0444);
+static char *gpd_fan_board = "";
+module_param(gpd_fan_board, charp, 0444);
 
 // EC read/write locker
 // Should never access EC at the same time, otherwise system down.
 static DEFINE_MUTEX(gpd_fan_lock);
+
+enum gpd_board {
+	win_mini,
+	win4_6800u,
+	win_max_2,
+};
 
 enum FAN_PWM_ENABLE {
 	DISABLE = 0,
@@ -36,7 +42,7 @@ enum FAN_PWM_ENABLE {
 	AUTOMATIC = 2,
 };
 
-struct gpd_driver_priv {
+static struct {
 	enum FAN_PWM_ENABLE pwm_enable;
 	u8 pwm_value;
 
@@ -46,10 +52,13 @@ struct gpd_driver_priv {
 	unsigned long fan_speed_last_update;
 	unsigned long read_pwm_last_update;
 
-	const struct gpd_model_quirk *const quirk;
-};
+	const struct gpd_board_quirk *quirk;
+} gpd_driver_priv;
 
-struct gpd_model_ec_address {
+struct gpd_board_quirk {
+	const char *board_name; /* Board name for module param comparison */
+	const enum gpd_board board;
+
 	const u8 addr_port;
 	const u8 data_port;
 	const u16 manual_control_enable;
@@ -58,84 +67,43 @@ struct gpd_model_ec_address {
 	const u16 pwm_max;
 };
 
-struct gpd_model_quirk {
-	const char *model_name;
-	const struct gpd_model_ec_address address;
+static struct gpd_board_quirk gpd_win_mini_quirk = {
+	.board_name = "win_mini",
+	.board = win_mini,
 
-	s32 (*read_rpm)(struct gpd_driver_priv *data);
-	int (*set_pwm_enable)(struct gpd_driver_priv *data,
-			      enum FAN_PWM_ENABLE);
-	s16 (*read_pwm)(struct gpd_driver_priv *data);
-	int (*write_pwm)(const struct gpd_driver_priv *data, u8 val);
+	.addr_port = 0x4E,
+	.data_port = 0x4F,
+	.manual_control_enable = 0x047A,
+	.rpm_read = 0x0478,
+	.pwm_write = 0x047A,
+	.pwm_max = 244,
 };
 
-static s32 gpd_read_rpm(struct gpd_driver_priv *data);
-static s16 gpd_read_pwm(struct gpd_driver_priv *data);
-static int gpd_write_pwm(const struct gpd_driver_priv *data, u8 val);
+static struct gpd_board_quirk gpd_win4_quirk = {
+	.board_name = "win4",
+	.board = win4_6800u,
 
-static int gpd_win_mini_set_pwm_enable(struct gpd_driver_priv *data,
-				       enum FAN_PWM_ENABLE pwm_enable);
-static int gpd_win_mini_write_pwm(const struct gpd_driver_priv *data, u8 val);
-
-static s32 gpd_win4_read_rpm(struct gpd_driver_priv *data);
-
-static s32 gpd_wm2_read_rpm(struct gpd_driver_priv *data);
-static s16 gpd_wm2_read_pwm(struct gpd_driver_priv *data);
-static int gpd_wm2_set_pwm_enable(struct gpd_driver_priv *data,
-				  enum FAN_PWM_ENABLE enable);
-static int gpd_wm2_write_pwm(const struct gpd_driver_priv *data, u8 val);
-
-static const struct gpd_model_quirk gpd_win_mini_quirk = {
-	.model_name	= "win_mini",
-	.address	= {
-				.addr_port		= 0x4E,
-				.data_port		= 0x4F,
-				.manual_control_enable	= 0x047A,
-				.rpm_read		= 0x0478,
-				.pwm_write		= 0x047A,
-				.pwm_max		= 244,
-			},
-	.read_rpm	= gpd_read_rpm,
-	.set_pwm_enable	= gpd_win_mini_set_pwm_enable,
-	.read_pwm	= gpd_read_pwm,
-	.write_pwm	= gpd_win_mini_write_pwm,
+	.addr_port = 0x2E,
+	.data_port = 0x2F,
+	.manual_control_enable = 0xC311,
+	.rpm_read = 0xC880,
+	.pwm_write = 0xC311,
+	.pwm_max = 127,
 };
 
-static const struct gpd_model_quirk gpd_win4_quirk = {
-	.model_name	= "win4",
-	.address	= {
-				.addr_port		= 0x2E,
-				.data_port		= 0x2F,
-				.manual_control_enable	= 0xC311,
-				.rpm_read		= 0xC880,
-				.pwm_write		= 0xC311,
-				.pwm_max		= 127,
-			},
-	.read_rpm	= gpd_win4_read_rpm,
-	// same as GPD Win Mini
-	.set_pwm_enable	= gpd_win_mini_set_pwm_enable,
-	.read_pwm	= gpd_read_pwm,
-	// same as GPD Win Mini
-	.write_pwm	= gpd_win_mini_write_pwm,
+static struct gpd_board_quirk gpd_wm2_quirk = {
+	.board_name = "wm2",
+	.board = win_max_2,
+
+	.addr_port = 0x4E,
+	.data_port = 0x4F,
+	.manual_control_enable = 0x0275,
+	.rpm_read = 0x0218,
+	.pwm_write = 0x1809,
+	.pwm_max = 184,
 };
 
-static const struct gpd_model_quirk gpd_wm2_quirk = {
-	.model_name	= "wm2",
-	.address	= {
-				.addr_port		= 0x4E,
-				.data_port		= 0x4F,
-				.manual_control_enable	= 0x0275,
-				.rpm_read		= 0x0218,
-				.pwm_write		= 0x1809,
-				.pwm_max		= 184,
-			},
-	.read_rpm	= gpd_wm2_read_rpm,
-	.set_pwm_enable	= gpd_wm2_set_pwm_enable,
-	.read_pwm	= gpd_wm2_read_pwm,
-	.write_pwm	= gpd_wm2_write_pwm,
-};
-
-static const struct dmi_system_id gpd_devices[] = {
+static const struct dmi_system_id dmi_table[] = {
 	{
 		// GPD Win Mini
 		// GPD Win Mini with AMD Ryzen 8840U
@@ -161,7 +129,7 @@ static const struct dmi_system_id gpd_devices[] = {
 					DMI_MATCH(DMI_PRODUCT_NAME, "G1618-04"),
 					DMI_MATCH(DMI_BOARD_VERSION, "Ver. 1.0"),
 				},
-		.driver_data	= &gpd_wm2_quirk,
+		.driver_data	= &gpd_wm2_quirk,	/* Since 7840U, win4 uses the same quirk as wm2 */
 	},
 	{
 		// GPD Win Max 2 with Ryzen 6800U
@@ -176,16 +144,17 @@ static const struct dmi_system_id gpd_devices[] = {
 	{}
 };
 
-static const struct gpd_model_quirk *gpd_module_quirks[] = {
+static const struct gpd_board_quirk *gpd_module_quirks[] = {
 	&gpd_win_mini_quirk, &gpd_win4_quirk, &gpd_wm2_quirk, NULL
 };
 
-static int gpd_ecram_read(const struct gpd_model_ec_address *address,
-			  u16 offset, u8 *val)
+/* Helper functions to handle EC read/write */
+static int gpd_ecram_read(const struct gpd_board_quirk *quirk, u16 offset,
+			  u8 *val)
 {
 	int ret;
-	u16 addr_port = address->addr_port;
-	u16 data_port = address->data_port;
+	u16 addr_port = quirk->addr_port;
+	u16 data_port = quirk->data_port;
 
 	ret = mutex_lock_interruptible(&gpd_fan_lock);
 
@@ -211,12 +180,12 @@ static int gpd_ecram_read(const struct gpd_model_ec_address *address,
 	return 0;
 }
 
-static int gpd_ecram_write(const struct gpd_model_ec_address *address,
-			   u16 offset, u8 value)
+static int gpd_ecram_write(const struct gpd_board_quirk *quirk, u16 offset,
+			   u8 value)
 {
 	int ret;
-	u16 addr_port = address->addr_port;
-	u16 data_port = address->data_port;
+	u16 addr_port = quirk->addr_port;
+	u16 data_port = quirk->data_port;
 
 	ret = mutex_lock_interruptible(&gpd_fan_lock);
 
@@ -242,109 +211,33 @@ static int gpd_ecram_write(const struct gpd_model_ec_address *address,
 	return 0;
 }
 
-static s32
-gpd_read_cached_fan_speed(struct gpd_driver_priv *data,
-			  s32 (*read_uncached)(const struct gpd_driver_priv *))
-{
-	// Update per 1000 milliseconds
-	if (time_after(jiffies, data->fan_speed_last_update + HZ)) {
-		s32 ret = read_uncached(data);
-
-		if (ret < 0)
-			return ret;
-
-		data->fan_speed_cached = ret;
-		data->fan_speed_last_update = jiffies;
-	}
-	return data->fan_speed_cached;
-}
-
-static s32
-gpd_read_cached_pwm(struct gpd_driver_priv *data,
-		    s16 (*read_uncached)(const struct gpd_driver_priv *))
-{
-	// Update per 1000 milliseconds
-	if (time_after(jiffies, data->read_pwm_last_update + HZ)) {
-		s16 ret = read_uncached(data);
-
-		if (ret < 0)
-			return ret;
-
-		data->read_pwm_cached = ret;
-		data->read_pwm_last_update = jiffies;
-	}
-	return data->read_pwm_cached;
-}
-
-static s32 gpd_read_rpm_uncached(const struct gpd_driver_priv *data)
+static s32 gpd_generic_read_rpm_uncached(void)
 {
 	u8 high, low;
 	int ret;
-	const struct gpd_model_ec_address *address = &data->quirk->address;
+	const struct gpd_board_quirk *const quirk = gpd_driver_priv.quirk;
 
-	ret = gpd_ecram_read(address, address->rpm_read, &high);
+	ret = gpd_ecram_read(quirk, quirk->rpm_read, &high);
 	if (ret)
 		return ret;
-	ret = gpd_ecram_read(address, address->rpm_read + 1, &low);
+	ret = gpd_ecram_read(quirk, quirk->rpm_read + 1, &low);
 	if (ret)
 		return ret;
 
 	return (u16)high << 8 | low;
 }
 
-static s32 gpd_read_rpm(struct gpd_driver_priv *data)
+static s32 gpd_win4_read_rpm_uncached(void)
 {
-	return gpd_read_cached_fan_speed(data, gpd_read_rpm_uncached);
-}
-
-static s16 gpd_read_pwm(struct gpd_driver_priv *data)
-{
-	return data->pwm_value;
-}
-
-static int gpd_write_pwm(const struct gpd_driver_priv *data, u8 val)
-{
-	const struct gpd_model_ec_address *address = &data->quirk->address;
-	u8 actual;
-
-	// PWM value's range in EC is 1 - pwm_max, cast 0 - 255 to it.
-	actual = val * (address->pwm_max - 1) / 255 + 1;
-	return gpd_ecram_write(address, address->pwm_write, actual);
-}
-
-static int gpd_win_mini_set_pwm_enable(struct gpd_driver_priv *data,
-				       enum FAN_PWM_ENABLE pwm_enable)
-{
-	switch (pwm_enable) {
-	case DISABLE:
-		return gpd_write_pwm(data, 255);
-	case MANUAL:
-		return gpd_write_pwm(data, data->pwm_value);
-	case AUTOMATIC:
-		const struct gpd_model_ec_address *address = &data->quirk->address;
-		return gpd_ecram_write(address, address->pwm_write, 0);
-	}
-	return 0;
-}
-
-static int gpd_win_mini_write_pwm(const struct gpd_driver_priv *data, u8 val)
-{
-	if (data->pwm_enable == MANUAL)
-		return gpd_write_pwm(data, val);
-	return 0;
-}
-
-static s32 gpd_win4_read_rpm_uncached(const struct gpd_driver_priv *data)
-{
-	const struct gpd_model_ec_address *address = &data->quirk->address;
+	const struct gpd_board_quirk *const quirk = gpd_driver_priv.quirk;
 	u8 PWMCTR;
 	s32 ret;
 
-	gpd_ecram_read(address, 0x1841, &PWMCTR);
+	gpd_ecram_read(quirk, 0x1841, &PWMCTR);
 	if (PWMCTR != 0x7F)
-		gpd_ecram_write(address, 0x1841, 0x7F);
+		gpd_ecram_write(quirk, 0x1841, 0x7F);
 
-	ret = gpd_read_rpm_uncached(data);
+	ret = gpd_generic_read_rpm_uncached();
 
 	if (ret < 0)
 		return ret;
@@ -353,101 +246,194 @@ static s32 gpd_win4_read_rpm_uncached(const struct gpd_driver_priv *data)
 		//re-init EC
 		u8 chip_id;
 
-		gpd_ecram_read(address, 0x2000, &chip_id);
+		gpd_ecram_read(quirk, 0x2000, &chip_id);
 		if (chip_id == 0x55) {
 			u8 chip_ver;
 
-			if (gpd_ecram_read(address, 0x1060, &chip_ver)) {
-				gpd_ecram_write(address, 0x1060,
-						chip_ver | 0x80);
+			if (gpd_ecram_read(quirk, 0x1060, &chip_ver)) {
+				gpd_ecram_write(quirk, 0x1060, chip_ver | 0x80);
 			}
 		}
 	}
 	return ret;
 }
 
-static s32 gpd_win4_read_rpm(struct gpd_driver_priv *data)
+static s32 gpd_wm2_read_rpm_uncached(void)
 {
-	return gpd_read_cached_fan_speed(data, gpd_win4_read_rpm_uncached);
-}
-
-static s32 gpd_wm2_read_rpm_uncached(const struct gpd_driver_priv *data)
-{
-	const struct gpd_model_ec_address *address = &data->quirk->address;
+	const struct gpd_board_quirk *const quirk = gpd_driver_priv.quirk;
 
 	for (u16 pwm_ctr_offset = 0x1841; pwm_ctr_offset <= 0x1843;
 	     pwm_ctr_offset++) {
 		u8 PWMCTR;
 
-		gpd_ecram_read(address, pwm_ctr_offset, &PWMCTR);
+		gpd_ecram_read(quirk, pwm_ctr_offset, &PWMCTR);
 		if (PWMCTR != 0xB8)
-			gpd_ecram_write(address, pwm_ctr_offset, 0xB8);
+			gpd_ecram_write(quirk, pwm_ctr_offset, 0xB8);
 	}
-	return gpd_read_rpm_uncached(data);
+	return gpd_generic_read_rpm_uncached();
 }
 
-static s32 gpd_wm2_read_rpm(struct gpd_driver_priv *data)
+// Read value for fan1_input
+static s32 gpd_read_rpm(void)
 {
-	return gpd_read_cached_fan_speed(data, gpd_wm2_read_rpm_uncached);
+	// Update per 1000 milliseconds
+	if (time_after(jiffies, gpd_driver_priv.fan_speed_last_update + HZ)) {
+		s32 ret = 0;
+
+		switch (gpd_driver_priv.quirk->board) {
+		case win_mini: {
+			ret = gpd_generic_read_rpm_uncached();
+			break;
+		}
+		case win4_6800u: {
+			ret = gpd_win4_read_rpm_uncached();
+			break;
+		}
+		case win_max_2: {
+			ret = gpd_wm2_read_rpm_uncached();
+			break;
+		}
+		}
+
+		if (ret < 0)
+			return ret;
+
+		gpd_driver_priv.fan_speed_cached = ret;
+		gpd_driver_priv.fan_speed_last_update = jiffies;
+	}
+	return gpd_driver_priv.fan_speed_cached;
 }
 
-static s16 gpd_wm2_read_pwm_uncached(const struct gpd_driver_priv *data)
+static s16 gpd_wm2_read_pwm_uncached(void)
 {
-	const struct gpd_model_ec_address *address = &data->quirk->address;
+	const struct gpd_board_quirk *const quirk = gpd_driver_priv.quirk;
 	u8 var;
-	int ret = gpd_ecram_read(address, address->pwm_write, &var);
+	int ret = gpd_ecram_read(quirk, quirk->pwm_write, &var);
 
 	if (ret < 0)
-		return ret;
+		return (s16)ret;
 
-	return var * 255 / address->pwm_max;
+	return (s16)(var * 255 / quirk->pwm_max);
 }
 
-static s16 gpd_wm2_read_pwm(struct gpd_driver_priv *data)
+// Read value for pwm1
+static s16 gpd_read_pwm(void)
 {
-	return gpd_read_cached_pwm(data, gpd_wm2_read_pwm_uncached);
-}
+	switch (gpd_driver_priv.quirk->board) {
+	case win_mini:
+	case win4_6800u:
+		return gpd_driver_priv.pwm_value;
+	case win_max_2:
+		// Update per 1000 milliseconds
+		if (time_after(jiffies,
+			       gpd_driver_priv.read_pwm_last_update + HZ)) {
+			s16 ret = gpd_wm2_read_pwm_uncached();
 
-static int gpd_wm2_set_pwm_enable(struct gpd_driver_priv *data,
-				  enum FAN_PWM_ENABLE enable)
-{
-	const struct gpd_model_ec_address *address = &data->quirk->address;
-	int ret;
+			if (ret < 0)
+				return ret;
 
-	switch (enable) {
-	case DISABLE:
-		ret = gpd_write_pwm(data, 255);
-
-		if (ret)
-			return ret;
-
-		return gpd_ecram_write(address, address->manual_control_enable,
-				       1);
-	case MANUAL:
-		ret = gpd_write_pwm(data, data->pwm_value);
-
-		if (ret)
-			return ret;
-
-		return gpd_ecram_write(address, address->manual_control_enable,
-				       1);
-	case AUTOMATIC:
-		ret = gpd_ecram_write(address, address->manual_control_enable,
-				      0);
-
-		// Immediately refresh the PWM value
-		gpd_read_cached_pwm(data, gpd_wm2_read_pwm_uncached);
-
-		return ret;
+			gpd_driver_priv.read_pwm_cached = ret;
+			gpd_driver_priv.read_pwm_last_update = jiffies;
+		}
+		return gpd_driver_priv.read_pwm_cached;
 	}
 	return 0;
 }
 
-static int gpd_wm2_write_pwm(const struct gpd_driver_priv *data, u8 val)
+static int gpd_generic_write_pwm(u8 val)
 {
-	if (data->pwm_enable != DISABLE)
-		return gpd_write_pwm(data, val);
+	const struct gpd_board_quirk *const quirk = gpd_driver_priv.quirk;
+	u8 actual;
 
+	// PWM value's range in EC is 1 - pwm_max, cast 0 - 255 to it.
+	actual = val * (quirk->pwm_max - 1) / 255 + 1;
+	return gpd_ecram_write(quirk, quirk->pwm_write, actual);
+}
+
+static int gpd_win_mini_write_pwm(u8 val)
+{
+	if (gpd_driver_priv.pwm_enable == MANUAL)
+		return gpd_generic_write_pwm(val);
+	return 0;
+}
+
+static int gpd_wm2_write_pwm(u8 val)
+{
+	if (gpd_driver_priv.pwm_enable != DISABLE)
+		return gpd_generic_write_pwm(val);
+
+	return 0;
+}
+
+// Write value for pwm1
+static int gpd_write_pwm(u8 val)
+{
+	switch (gpd_driver_priv.quirk->board) {
+	case win_mini:
+		return gpd_win_mini_write_pwm(val);
+	case win4_6800u:
+		return gpd_generic_write_pwm(val);
+	case win_max_2:
+		return gpd_wm2_write_pwm(val);
+	}
+	return 0;
+}
+
+static int gpd_win_mini_set_pwm_enable(enum FAN_PWM_ENABLE pwm_enable)
+{
+	switch (pwm_enable) {
+	case DISABLE:
+		return gpd_generic_write_pwm(255);
+	case MANUAL:
+		return gpd_generic_write_pwm(gpd_driver_priv.pwm_value);
+	case AUTOMATIC:
+		const struct gpd_board_quirk *quirk = gpd_driver_priv.quirk;
+		return gpd_ecram_write(quirk, quirk->pwm_write, 0);
+	}
+	return 0;
+}
+
+static int gpd_wm2_set_pwm_enable(enum FAN_PWM_ENABLE enable)
+{
+	const struct gpd_board_quirk *const quirk = gpd_driver_priv.quirk;
+	int ret;
+
+	switch (enable) {
+	case DISABLE: {
+		ret = gpd_generic_write_pwm(255);
+
+		if (ret)
+			return ret;
+
+		return gpd_ecram_write(quirk, quirk->manual_control_enable, 1);
+	}
+	case MANUAL: {
+		ret = gpd_generic_write_pwm(gpd_driver_priv.pwm_value);
+
+		if (ret)
+			return ret;
+
+		return gpd_ecram_write(quirk, quirk->manual_control_enable, 1);
+	}
+	case AUTOMATIC: {
+		ret = gpd_ecram_write(quirk, quirk->manual_control_enable, 0);
+
+		return ret;
+	}
+	}
+	return 0;
+}
+
+// Write value for pwm1_enable
+static int gpd_set_pwm_enable(enum FAN_PWM_ENABLE enable)
+{
+	switch (gpd_driver_priv.quirk->board) {
+	case win_mini:
+	case win4_6800u:
+		return gpd_win_mini_set_pwm_enable(enable);
+	case win_max_2:
+		return gpd_wm2_set_pwm_enable(enable);
+	}
 	return 0;
 }
 
@@ -469,32 +455,29 @@ static umode_t gpd_fan_hwmon_is_visible(__always_unused const void *drvdata,
 	return 0;
 }
 
-static int gpd_fan_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
-			      u32 attr, __always_unused int channel, long *val)
+static int gpd_fan_hwmon_read(__always_unused struct device *dev,
+			      enum hwmon_sensor_types type, u32 attr,
+			      __always_unused int channel, long *val)
 {
-	struct gpd_driver_priv *data = dev_get_drvdata(dev);
-
 	if (type == hwmon_fan) {
-		switch (attr) {
-		case hwmon_fan_input:
-			s32 ret = data->quirk->read_rpm(data);
+		if (attr == hwmon_fan_input) {
+			s32 ret = gpd_read_rpm();
 
 			if (ret < 0)
 				return ret;
 
 			*val = ret;
 			return 0;
-		default:
-			return -EOPNOTSUPP;
 		}
+		return -EOPNOTSUPP;
 	}
 	if (type == hwmon_pwm) {
 		switch (attr) {
 		case hwmon_pwm_enable:
-			*val = data->pwm_enable;
+			*val = gpd_driver_priv.pwm_enable;
 			return 0;
 		case hwmon_pwm_input:
-			s16 ret = data->quirk->read_pwm(data);
+			s16 ret = gpd_read_pwm();
 
 			if (ret < 0)
 				return ret;
@@ -508,24 +491,22 @@ static int gpd_fan_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
 	return -EOPNOTSUPP;
 }
 
-static int gpd_fan_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
-			       u32 attr, __always_unused int channel, long val)
+static int gpd_fan_hwmon_write(__always_unused struct device *dev,
+			       enum hwmon_sensor_types type, u32 attr,
+			       __always_unused int channel, long val)
 {
-	struct gpd_driver_priv *data = dev_get_drvdata(dev);
-
 	if (type == hwmon_pwm) {
 		switch (attr) {
 		case hwmon_pwm_enable:
 			if (!in_range(val, 0, 3))
 				return -EINVAL;
-			data->pwm_enable = val;
-			return data->quirk->set_pwm_enable(data,
-							   data->pwm_enable);
+			gpd_driver_priv.pwm_enable = val;
+			return gpd_set_pwm_enable(gpd_driver_priv.pwm_enable);
 		case hwmon_pwm_input:
 			u8 var = clamp_val(val, 0, 255);
 
-			data->pwm_value = var;
-			return data->quirk->write_pwm(data, var);
+			gpd_driver_priv.pwm_value = var;
+			return gpd_write_pwm(var);
 		default:
 			return -EOPNOTSUPP;
 		}
@@ -534,9 +515,9 @@ static int gpd_fan_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
 }
 
 static const struct hwmon_ops gpd_fan_ops = {
-	.is_visible	= gpd_fan_hwmon_is_visible,
-	.read		= gpd_fan_hwmon_read,
-	.write		= gpd_fan_hwmon_write,
+	.is_visible = gpd_fan_hwmon_is_visible,
+	.read = gpd_fan_hwmon_read,
+	.write = gpd_fan_hwmon_write,
 };
 
 static const struct hwmon_channel_info *gpd_fan_hwmon_channel_info[] = {
@@ -545,8 +526,8 @@ static const struct hwmon_channel_info *gpd_fan_hwmon_channel_info[] = {
 };
 
 static struct hwmon_chip_info gpd_fan_chip_info = {
-	.ops	= &gpd_fan_ops,
-	.info	= gpd_fan_hwmon_channel_info
+	.ops = &gpd_fan_ops,
+	.info = gpd_fan_hwmon_channel_info
 };
 
 static int gpd_fan_probe(struct platform_device *pdev)
@@ -581,12 +562,10 @@ static int gpd_fan_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int gpd_fan_remove(struct platform_device *pdev)
+static int gpd_fan_remove(__always_unused struct platform_device *pdev)
 {
-	struct gpd_driver_priv *data = dev_get_platdata(&pdev->dev);
-
-	data->pwm_enable = AUTOMATIC;
-	data->quirk->set_pwm_enable(data, AUTOMATIC);
+	gpd_driver_priv.pwm_enable = AUTOMATIC;
+	gpd_set_pwm_enable(AUTOMATIC);
 
 	return 0;
 }
@@ -603,42 +582,41 @@ static struct platform_device *gpd_fan_platform_device;
 
 static int __init gpd_fan_init(void)
 {
-	const struct gpd_model_quirk *match = NULL;
+	const struct gpd_board_quirk *match = NULL;
 
-	for (const struct gpd_model_quirk **p = gpd_module_quirks; *p; p++) {
-		if (strcmp(gpd_fan_model, (*p)->model_name) == 0) {
+	for (const struct gpd_board_quirk **p = gpd_module_quirks; *p; p++) {
+		if (strcmp(gpd_fan_board, (*p)->board_name) == 0) {
 			match = *p;
 			break;
 		}
 	}
 
 	if (!match)
-		match = dmi_first_match(gpd_devices)->driver_data;
+		match = dmi_first_match(dmi_table)->driver_data;
 
 	if (!match)
 		return -ENODEV;
 
-	struct gpd_driver_priv data = {
-		.pwm_enable		= AUTOMATIC,
-		.pwm_value		= 255,
-		.fan_speed_cached	= 0,
-		.read_pwm_cached	= 0,
-		.fan_speed_last_update	= jiffies,
-		.read_pwm_last_update	= jiffies,
-		.quirk			= match,
-	};
+	unsigned long jiffies_latest = jiffies - HZ;
+
+	gpd_driver_priv.pwm_enable = AUTOMATIC;
+	gpd_driver_priv.pwm_value = 255;
+	gpd_driver_priv.fan_speed_cached = 0;
+	gpd_driver_priv.read_pwm_cached = 0;
+	gpd_driver_priv.fan_speed_last_update = jiffies_latest;
+	gpd_driver_priv.read_pwm_last_update = jiffies_latest;
+	gpd_driver_priv.quirk = match;
 
 	struct resource gpd_fan_resources[] = {
 		{
-			.start	= data.quirk->address.addr_port,
-			.end	= data.quirk->address.data_port,
-			.flags	= IORESOURCE_IO,
+			.start = match->addr_port,
+			.end = match->data_port,
+			.flags = IORESOURCE_IO,
 		},
 	};
 
 	gpd_fan_platform_device = platform_create_bundle(
-		&gpd_fan_driver, gpd_fan_probe, gpd_fan_resources, 1, &data,
-		sizeof(struct gpd_driver_priv));
+		&gpd_fan_driver, gpd_fan_probe, gpd_fan_resources, 1, NULL, 0);
 
 	if (IS_ERR(gpd_fan_platform_device)) {
 		pr_warn("Failed to create platform device\n");
@@ -654,12 +632,10 @@ static void __exit gpd_fan_exit(void)
 	platform_driver_unregister(&gpd_fan_driver);
 }
 
-module_init(gpd_fan_init)
-module_exit(gpd_fan_exit)
+MODULE_DEVICE_TABLE(dmi, dmi_table);
+
+module_init(gpd_fan_init) module_exit(gpd_fan_exit)
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Cryolitia <Cryolitia@gmail.com>");
 MODULE_DESCRIPTION("GPD Devices fan control driver");
-MODULE_ALIAS("dmi:*:svnGPD:pnG1617-01:*");
-MODULE_ALIAS("dmi:*:svnGPD:pnG1618-04:*");
-MODULE_ALIAS("dmi:*:svnGPD:pnG1619-04:*");
