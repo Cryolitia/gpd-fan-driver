@@ -456,7 +456,8 @@ gpd_fan_hwmon_write(struct device *dev, enum hwmon_sensor_types type, u32 attr,
     if (type == hwmon_pwm) {
         switch (attr) {
             case hwmon_pwm_enable:
-                if (!in_range(val, 0, 3))
+                //ATTRIBUTION-AI: ChatGPT o1 2025-01-11 . Replace 'if (!in_range(val, 0, 3))' .
+                if (val < 0 || val > 3)
                     return -EINVAL;
                 data->pwm_enable = val;
                 return data->quirk->set_pwm_enable(data, data->pwm_enable);
