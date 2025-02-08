@@ -322,16 +322,16 @@ static int gpd_win_mini_write_pwm(u8 val)
 {
 	if (gpd_driver_priv.pwm_enable == MANUAL)
 		return gpd_generic_write_pwm(val);
-
-	return 0;
+	else
+		return -EPERM;
 }
 
 static int gpd_wm2_write_pwm(u8 val)
 {
 	if (gpd_driver_priv.pwm_enable != DISABLE)
 		return gpd_generic_write_pwm(val);
-
-	return 0;
+	else
+		return -EPERM;
 }
 
 // Write value for pwm1
@@ -596,8 +596,9 @@ static void __exit gpd_fan_exit(void)
 
 MODULE_DEVICE_TABLE(dmi, dmi_table);
 
-module_init(gpd_fan_init) module_exit(gpd_fan_exit)
+module_init(gpd_fan_init)
+module_exit(gpd_fan_exit)
 
-	MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Cryolitia <Cryolitia@gmail.com>");
 MODULE_DESCRIPTION("GPD Devices fan control driver");
