@@ -29,7 +29,7 @@ Module parameters
 -----------------
 
 gpd_fan_board
-  Force specific which module quirk should be used.
+  Force specific which board quirk should be used.
   Use it like "gpd_fan_board=wm2".
 
    - wm2

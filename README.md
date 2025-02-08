@@ -1,6 +1,6 @@
 # GPD devices fan linux kernel driver
 
-This branch is for developing in-tree module, do not use it with special reason.
+This branch is for developing in-tree module, do not use it without special reason.
 
 > [!CAUTION]
 > 
