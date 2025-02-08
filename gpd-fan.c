@@ -205,7 +205,7 @@ static int gpd_ecram_write(const struct gpd_board_quirk *quirk, u16 offset,
 	return 0;
 }
 
-static s32 gpd_generic_read_rpm_uncached(void)
+static int gpd_generic_read_rpm_uncached(void)
 {
 	u8 high, low;
 	int ret;
@@ -221,11 +221,11 @@ static s32 gpd_generic_read_rpm_uncached(void)
 	return (u16)high << 8 | low;
 }
 
-static s32 gpd_win4_read_rpm_uncached(void)
+static int gpd_win4_read_rpm_uncached(void)
 {
 	const struct gpd_board_quirk *const quirk = gpd_driver_priv.quirk;
 	u8 PWMCTR;
-	s32 ret;
+	int ret;
 
 	gpd_ecram_read(quirk, 0x1841, &PWMCTR);
 	if (PWMCTR != 0x7F)
@@ -251,7 +251,7 @@ static s32 gpd_win4_read_rpm_uncached(void)
 	return ret;
 }
 
-static s32 gpd_wm2_read_rpm_uncached(void)
+static int gpd_wm2_read_rpm_uncached(void)
 {
 	const struct gpd_board_quirk *const quirk = gpd_driver_priv.quirk;
 
@@ -267,7 +267,7 @@ static s32 gpd_wm2_read_rpm_uncached(void)
 }
 
 // Read value for fan1_input
-static s32 gpd_read_rpm(void)
+static int gpd_read_rpm(void)
 {
 	switch (gpd_driver_priv.quirk->board) {
 	case win_mini: {
@@ -275,30 +275,28 @@ static s32 gpd_read_rpm(void)
 	}
 	case win4_6800u: {
 		return gpd_win4_read_rpm_uncached();
-		break;
 	}
 	case win_max_2: {
 		return gpd_wm2_read_rpm_uncached();
-		break;
 	}
 	}
 	return 0;
 }
 
-static s16 gpd_wm2_read_pwm_uncached(void)
+static int gpd_wm2_read_pwm_uncached(void)
 {
 	const struct gpd_board_quirk *const quirk = gpd_driver_priv.quirk;
 	u8 var;
 	int ret = gpd_ecram_read(quirk, quirk->pwm_write, &var);
 
 	if (ret < 0)
-		return (s16)ret;
+		return ret;
 
-	return (s16)(var * 255 / quirk->pwm_max);
+	return var * 255 / quirk->pwm_max;
 }
 
 // Read value for pwm1
-static s16 gpd_read_pwm(void)
+static int gpd_read_pwm(void)
 {
 	switch (gpd_driver_priv.quirk->board) {
 	case win_mini:
@@ -324,6 +322,7 @@ static int gpd_win_mini_write_pwm(u8 val)
 {
 	if (gpd_driver_priv.pwm_enable == MANUAL)
 		return gpd_generic_write_pwm(val);
+
 	return 0;
 }
 
@@ -432,7 +431,7 @@ static int gpd_fan_hwmon_read(__always_unused struct device *dev,
 {
 	if (type == hwmon_fan) {
 		if (attr == hwmon_fan_input) {
-			s32 ret = gpd_read_rpm();
+			int ret = gpd_read_rpm();
 
 			if (ret < 0)
 				return ret;
@@ -448,7 +447,7 @@ static int gpd_fan_hwmon_read(__always_unused struct device *dev,
 			*val = gpd_driver_priv.pwm_enable;
 			return 0;
 		case hwmon_pwm_input:
-			s16 ret = gpd_read_pwm();
+			int ret = gpd_read_pwm();
 
 			if (ret < 0)
 				return ret;
