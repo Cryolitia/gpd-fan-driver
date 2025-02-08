@@ -15,7 +15,6 @@
 #include <linux/dmi.h>
 #include <linux/hwmon.h>
 #include <linux/ioport.h>
-#include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -45,12 +44,6 @@ enum FAN_PWM_ENABLE {
 static struct {
 	enum FAN_PWM_ENABLE pwm_enable;
 	u8 pwm_value;
-
-	u16 fan_speed_cached;
-	u8 read_pwm_cached;
-
-	unsigned long fan_speed_last_update;
-	unsigned long read_pwm_last_update;
 
 	const struct gpd_board_quirk *quirk;
 } gpd_driver_priv;
@@ -276,32 +269,20 @@ static s32 gpd_wm2_read_rpm_uncached(void)
 // Read value for fan1_input
 static s32 gpd_read_rpm(void)
 {
-	// Update per 1000 milliseconds
-	if (time_after(jiffies, gpd_driver_priv.fan_speed_last_update + HZ)) {
-		s32 ret = 0;
-
-		switch (gpd_driver_priv.quirk->board) {
-		case win_mini: {
-			ret = gpd_generic_read_rpm_uncached();
-			break;
-		}
-		case win4_6800u: {
-			ret = gpd_win4_read_rpm_uncached();
-			break;
-		}
-		case win_max_2: {
-			ret = gpd_wm2_read_rpm_uncached();
-			break;
-		}
-		}
-
-		if (ret < 0)
-			return ret;
-
-		gpd_driver_priv.fan_speed_cached = ret;
-		gpd_driver_priv.fan_speed_last_update = jiffies;
+	switch (gpd_driver_priv.quirk->board) {
+	case win_mini: {
+		return gpd_generic_read_rpm_uncached();
 	}
-	return gpd_driver_priv.fan_speed_cached;
+	case win4_6800u: {
+		return gpd_win4_read_rpm_uncached();
+		break;
+	}
+	case win_max_2: {
+		return gpd_wm2_read_rpm_uncached();
+		break;
+	}
+	}
+	return 0;
 }
 
 static s16 gpd_wm2_read_pwm_uncached(void)
@@ -324,18 +305,7 @@ static s16 gpd_read_pwm(void)
 	case win4_6800u:
 		return gpd_driver_priv.pwm_value;
 	case win_max_2:
-		// Update per 1000 milliseconds
-		if (time_after(jiffies,
-			       gpd_driver_priv.read_pwm_last_update + HZ)) {
-			s16 ret = gpd_wm2_read_pwm_uncached();
-
-			if (ret < 0)
-				return ret;
-
-			gpd_driver_priv.read_pwm_cached = ret;
-			gpd_driver_priv.read_pwm_last_update = jiffies;
-		}
-		return gpd_driver_priv.read_pwm_cached;
+		return gpd_wm2_read_pwm_uncached();
 	}
 	return 0;
 }
@@ -563,12 +533,10 @@ static int gpd_fan_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int gpd_fan_remove(__always_unused struct platform_device *pdev)
+static void gpd_fan_remove(__always_unused struct platform_device *pdev)
 {
 	gpd_driver_priv.pwm_enable = AUTOMATIC;
 	gpd_set_pwm_enable(AUTOMATIC);
-
-	return 0;
 }
 
 static struct platform_driver gpd_fan_driver = {
@@ -598,14 +566,8 @@ static int __init gpd_fan_init(void)
 	if (!match)
 		return -ENODEV;
 
-	unsigned long jiffies_latest = jiffies - HZ;
-
 	gpd_driver_priv.pwm_enable = AUTOMATIC;
 	gpd_driver_priv.pwm_value = 255;
-	gpd_driver_priv.fan_speed_cached = 0;
-	gpd_driver_priv.read_pwm_cached = 0;
-	gpd_driver_priv.fan_speed_last_update = jiffies_latest;
-	gpd_driver_priv.read_pwm_last_update = jiffies_latest;
 	gpd_driver_priv.quirk = match;
 
 	struct resource gpd_fan_resources[] = {
@@ -637,6 +599,6 @@ MODULE_DEVICE_TABLE(dmi, dmi_table);
 
 module_init(gpd_fan_init) module_exit(gpd_fan_exit)
 
-MODULE_LICENSE("GPL");
+	MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Cryolitia <Cryolitia@gmail.com>");
 MODULE_DESCRIPTION("GPD Devices fan control driver");
