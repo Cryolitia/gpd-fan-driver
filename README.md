@@ -6,7 +6,7 @@
 > 
 > It may cause damage to your device. Use at your own risk.
 
-Tested on GPD Win Max 2 2023 (7840U) with 6.8.4-zen1
+Continuous testing on my GPD Win Max 2 2023 (7840U) with kernel_zen in nixos-unstable
 
 ## Should support
 
@@ -53,6 +53,10 @@ Supported models:
 
 - Arch Linux(thx @dreirund): [gpd-fan-driver-dkms-git](https://aur.archlinux.org/packages/gpd-fan-driver-dkms-git)
 - NixOS: `nixosModules.default`
+
+## Upstreaming
+
+The driver is tried to upstreaming to the kernel mainline. The work progress could be seen in [branch in-tree](https://github.com/Cryolitia/gpd-fan-driver/tree/in-tree) and [my linux fork](https://github.com/Cryolitia-Forks/linux/tree/b4/gpd_fan). The main branch will write whatever I'd like and the in-tree branch will catering to the preferences of kernel developers.
 
 ## Datasheet
 
