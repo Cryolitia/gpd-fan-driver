@@ -21,6 +21,8 @@
 
 #define DRIVER_NAME "gpdfan"
 
+#define GPD_PWM_CTR_OFFSET 0x1841
+
 // model param, see document
 static char *gpd_fan_board = "";
 module_param(gpd_fan_board, charp, 0444);
@@ -227,9 +229,9 @@ static int gpd_win4_read_rpm_uncached(void)
 	u8 PWMCTR;
 	int ret;
 
-	gpd_ecram_read(drvdata, 0x1841, &PWMCTR);
+	gpd_ecram_read(drvdata, GPD_PWM_CTR_OFFSET, &PWMCTR);
 	if (PWMCTR != 0x7F)
-		gpd_ecram_write(drvdata, 0x1841, 0x7F);
+		gpd_ecram_write(drvdata, GPD_PWM_CTR_OFFSET, 0x7F);
 
 	ret = gpd_generic_read_rpm_uncached();
 
@@ -255,7 +257,7 @@ static int gpd_wm2_read_rpm_uncached(void)
 {
 	const struct gpd_board_drvdata *const drvdata = gpd_driver_priv.drvdata;
 
-	for (u16 pwm_ctr_offset = 0x1841; pwm_ctr_offset <= 0x1843;
+	for (u16 pwm_ctr_offset = GPD_PWM_CTR_OFFSET; pwm_ctr_offset <= GPD_PWM_CTR_OFFSET + 2;
 	     pwm_ctr_offset++) {
 		u8 PWMCTR;
 
