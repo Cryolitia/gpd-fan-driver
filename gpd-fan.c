@@ -351,6 +351,15 @@ static const struct dmi_system_id gpd_devices[] = {
         .driver_data = (void *) &gpd_win_mini_quirk,
     },
     {
+        // GPD Win Mini
+        // GPD Win Mini with AMD Ryzen HX370
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "G1617-02")
+        },
+        .driver_data = (void *) &gpd_win_mini_quirk,
+    },
+    {
         // GPD Win 4 with AMD Ryzen 6800U
         .matches = {
             DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
@@ -375,6 +384,14 @@ static const struct dmi_system_id gpd_devices[] = {
         .matches = {
             DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
             DMI_MATCH(DMI_PRODUCT_NAME, "G1619-04"),
+        },
+        .driver_data = (void *) &gpd_wm2_quirk,
+    },
+    {
+        // GPD Win Max 2 with Ryzen HX370
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "G1619-05"),
         },
         .driver_data = (void *) &gpd_wm2_quirk,
     },
