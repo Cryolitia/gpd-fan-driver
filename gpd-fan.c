@@ -12,8 +12,6 @@
  * Copyright (c) 2024 Cryolitia PukNgae
  */
 
-#define OUT_OF_TREE
-
 #include <linux/acpi.h>
 #include <linux/dmi.h>
 #include <linux/hwmon.h>
@@ -21,13 +19,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-
-#ifdef OUT_OF_TREE
-#include <linux/debugfs.h>
-#include <linux/hwmon-sysfs.h>
-#include <linux/jiffies.h>
-#include <linux/version.h>
-#endif
 
 #define DRIVER_NAME "gpdfan"
 #define GPD_PWM_CTR_OFFSET 0x1841
@@ -55,17 +46,6 @@ enum FAN_PWM_ENABLE {
 static struct {
 	enum FAN_PWM_ENABLE pwm_enable;
 	u8 pwm_value;
-
-#ifdef OUT_OF_TREE
-	u16 read_rpm_cached;
-	u8 read_pwm_cached;
-
-	// minium 1000 mill seconds
-	u32 update_interval_per_second;
-
-	unsigned long read_rpm_last_update;
-	unsigned long read_pwm_last_update;
-#endif
 
 	const struct gpd_board_drvdata *drvdata;
 } gpd_driver_priv;
@@ -277,33 +257,6 @@ static int gpd_ecram_write(const struct gpd_board_drvdata *drvdata, u16 offset,
 	mutex_unlock(&gpd_fan_lock);
 	return 0;
 }
-
-#ifdef OUT_OF_TREE
-
-static int gpd_read_pwm(void);
-static int gpd_read_rpm(void);
-
-#define DEFINE_GPD_READ_CACHED(name, type)                                          \
-	static int gpd_##name##_cached(void)                                        \
-	{                                                                           \
-		if (time_after(                                                     \
-			    jiffies,                                                \
-			    gpd_driver_priv.name##_last_update +                    \
-				    HZ * gpd_driver_priv                            \
-						    .update_interval_per_second)) { \
-			int ret = gpd_##name();                                     \
-			if (ret)                                                    \
-				return ret;                                         \
-			gpd_driver_priv.name##_cached = (type)ret;                  \
-			gpd_driver_priv.name##_last_update = jiffies;               \
-		}                                                                   \
-		return 0;                                                           \
-	}
-
-DEFINE_GPD_READ_CACHED(read_rpm, u16);
-DEFINE_GPD_READ_CACHED(read_pwm, u8);
-
-#endif
 
 static int gpd_generic_read_rpm(void)
 {
@@ -520,10 +473,6 @@ static umode_t gpd_fan_hwmon_is_visible(__always_unused const void *drvdata,
 		return 0444;
 	} else if (type == hwmon_pwm) {
 		switch (attr) {
-#ifdef OUT_OF_TREE
-		case hwmon_pwm_mode:
-			return 0444;
-#endif
 		case hwmon_pwm_enable:
 		case hwmon_pwm_input:
 			return 0644;
@@ -531,11 +480,6 @@ static umode_t gpd_fan_hwmon_is_visible(__always_unused const void *drvdata,
 			return 0;
 		}
 	}
-#ifdef OUT_OF_TREE
-	if (type == hwmon_chip && attr == hwmon_chip_update_interval) {
-		return 0644;
-	}
-#endif
 	return 0;
 }
 
@@ -545,11 +489,7 @@ static int gpd_fan_hwmon_read(__always_unused struct device *dev,
 {
 	if (type == hwmon_fan) {
 		if (attr == hwmon_fan_input) {
-#ifdef OUT_OF_TREE
-			int ret = gpd_read_rpm_cached();
-#else
 			int ret = gpd_read_rpm();
-#endif
 
 			if (ret < 0)
 				return ret;
@@ -563,20 +503,11 @@ static int gpd_fan_hwmon_read(__always_unused struct device *dev,
 		int ret;
 
 		switch (attr) {
-#ifdef OUT_OF_TREE
-		case hwmon_pwm_mode:
-			*val = 1;
-			return 0;
-#endif
 		case hwmon_pwm_enable:
 			*val = gpd_driver_priv.pwm_enable;
 			return 0;
 		case hwmon_pwm_input:
-#ifdef OUT_OF_TREE
-			ret = gpd_read_pwm_cached();
-#else
 			ret = gpd_read_pwm();
-#endif
 
 			if (ret < 0)
 				return ret;
@@ -587,12 +518,6 @@ static int gpd_fan_hwmon_read(__always_unused struct device *dev,
 			return -EOPNOTSUPP;
 		}
 	}
-#ifdef OUT_OF_TREE
-	if (type == hwmon_chip && attr == hwmon_chip_update_interval) {
-		*val = 1000 * gpd_driver_priv.update_interval_per_second;
-		return 0;
-	}
-#endif
 	return -EOPNOTSUPP;
 }
 
@@ -618,17 +543,6 @@ static int gpd_fan_hwmon_write(__always_unused struct device *dev,
 			return -EOPNOTSUPP;
 		}
 	}
-#ifdef OUT_OF_TREE
-	if (type == hwmon_chip) {
-		if (attr == hwmon_chip_update_interval) {
-			int interval = val / 1000;
-			if (interval < 1)
-				interval = 1;
-			gpd_driver_priv.update_interval_per_second = interval;
-			return 0;
-		}
-	}
-#endif
 	return -EOPNOTSUPP;
 }
 
@@ -639,15 +553,8 @@ static const struct hwmon_ops gpd_fan_ops = {
 };
 
 static const struct hwmon_channel_info *gpd_fan_hwmon_channel_info[] = {
-#ifdef OUT_OF_TREE
-	HWMON_CHANNEL_INFO(chip, HWMON_C_UPDATE_INTERVAL),
-	HWMON_CHANNEL_INFO(fan, HWMON_F_INPUT),
-	HWMON_CHANNEL_INFO(pwm,
-			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE | HWMON_PWM_MODE),
-#else
 	HWMON_CHANNEL_INFO(fan, HWMON_F_INPUT),
 	HWMON_CHANNEL_INFO(pwm, HWMON_PWM_INPUT | HWMON_PWM_ENABLE),
-#endif
 	NULL
 };
 
@@ -655,52 +562,6 @@ static struct hwmon_chip_info gpd_fan_chip_info = {
 	.ops = &gpd_fan_ops,
 	.info = gpd_fan_hwmon_channel_info
 };
-
-#ifdef OUT_OF_TREE
-struct dentry *DEBUG_FS_ENTRY = NULL;
-
-static int debugfs_manual_control_get(void *data, u64 *val)
-{
-	const struct gpd_board_drvdata *address = gpd_driver_priv.drvdata;
-	u8 u8_val;
-
-	int ret = gpd_ecram_read(address, address->manual_control_enable,
-				 &u8_val);
-	*val = (u64)u8_val;
-	return ret;
-}
-
-static int debugfs_manual_control_set(void *data, u64 val)
-{
-	const struct gpd_board_drvdata *address = gpd_driver_priv.drvdata;
-	return gpd_ecram_write(address, address->manual_control_enable,
-			       clamp_val(val, 0, 255));
-}
-
-static int debugfs_pwm_get(void *data, u64 *val)
-{
-	const struct gpd_board_drvdata *address = gpd_driver_priv.drvdata;
-	u8 u8_val;
-
-	int ret = gpd_ecram_read(address, address->pwm_write, &u8_val);
-	*val = (u64)u8_val;
-	return ret;
-}
-
-static int debugfs_pwm_set(void *data, u64 val)
-{
-	const struct gpd_board_drvdata *address = gpd_driver_priv.drvdata;
-	return gpd_ecram_write(address, address->pwm_write,
-			       clamp_val(val, 0, 255));
-}
-
-DEFINE_DEBUGFS_ATTRIBUTE(debugfs_manual_control_fops,
-			 debugfs_manual_control_get, debugfs_manual_control_set,
-			 "%llu\n");
-DEFINE_DEBUGFS_ATTRIBUTE(debugfs_pwm_fops, debugfs_pwm_get, debugfs_pwm_set,
-			 "%llu\n");
-
-#endif
 
 static int gpd_fan_probe(struct platform_device *pdev)
 {
@@ -729,51 +590,13 @@ static int gpd_fan_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, PTR_ERR(region_res),
 				     "Failed to register hwmon device\n");
 
-#ifdef OUT_OF_TREE
-	struct dentry *debug_fs_entry = debugfs_create_dir(DRIVER_NAME, NULL);
-	if (!IS_ERR(debug_fs_entry)) {
-		DEBUG_FS_ENTRY = debug_fs_entry;
-		debugfs_create_file_size("manual_control_reg",
-					 S_IRUSR | S_IWUSR, DEBUG_FS_ENTRY,
-					 NULL, &debugfs_manual_control_fops,
-					 sizeof(u8));
-		debugfs_create_file_size("pwm_reg", S_IRUSR | S_IWUSR,
-					 DEBUG_FS_ENTRY, NULL,
-					 &debugfs_pwm_fops, sizeof(u8));
-	}
-
-	pr_info("GPD Devices fan driver probed\n");
-#endif
-
 	return 0;
 }
 
-#ifdef OUT_OF_TREE
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-static int gpd_fan_remove(__always_unused struct platform_device *pdev)
-#else
 static void gpd_fan_remove(__always_unused struct platform_device *pdev)
-#endif
-#else
-static void gpd_fan_remove(__always_unused struct platform_device *pdev)
-#endif
 {
 	gpd_driver_priv.pwm_enable = AUTOMATIC;
 	gpd_set_pwm_enable(AUTOMATIC);
-#ifdef OUT_OF_TREE
-
-	if (!IS_ERR_OR_NULL(DEBUG_FS_ENTRY)) {
-		debugfs_remove_recursive(DEBUG_FS_ENTRY);
-		DEBUG_FS_ENTRY = NULL;
-	}
-
-	pr_info("GPD Devices fan driver removed\n");
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-	return 0;
-#endif
-
-#endif
 }
 
 static struct platform_driver gpd_fan_driver = {
@@ -804,29 +627,12 @@ static int __init gpd_fan_init(void)
 			match = dmi_match->driver_data;
 	}
 
-#ifdef OUT_OF_TREE
-	if (!match) {
-		pr_err("GPD Devices not supported\n");
-		return -ENODEV;
-	} else {
-		pr_info("Loading GPD fan model quirk: %s\n", match->board_name);
-	}
-#else
 	if (!match)
 		return -ENODEV;
-#endif
 
 	gpd_driver_priv.pwm_enable = AUTOMATIC;
 	gpd_driver_priv.pwm_value = 255;
 	gpd_driver_priv.drvdata = match;
-
-#ifdef OUT_OF_TREE
-	gpd_driver_priv.read_pwm_cached = 0;
-	gpd_driver_priv.read_rpm_cached = 0;
-	gpd_driver_priv.update_interval_per_second = 1;
-	gpd_driver_priv.read_pwm_last_update = jiffies;
-	gpd_driver_priv.read_rpm_last_update = jiffies;
-#endif
 
 	struct resource gpd_fan_resources[] = {
 		{
@@ -846,10 +652,6 @@ static int __init gpd_fan_init(void)
 		return PTR_ERR(gpd_fan_platform_device);
 	}
 
-#ifdef OUT_OF_TREE
-	pr_info("GPD Devices fan driver loaded\n");
-#endif
-
 	return 0;
 }
 
@@ -857,9 +659,6 @@ static void __exit gpd_fan_exit(void)
 {
 	platform_device_unregister(gpd_fan_platform_device);
 	platform_driver_unregister(&gpd_fan_driver);
-#ifdef OUT_OF_TREE
-	pr_info("GPD Devices fan driver unloaded\n");
-#endif
 }
 
 MODULE_DEVICE_TABLE(dmi, dmi_table);
