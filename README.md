@@ -123,13 +123,13 @@ The driver is tried to upstreaming to the kernel mainline. The work progress cou
   <tr>
     <td rowspan="2">GPD Duo</td>
     <td rowspan="2"></td>
-    <td>G1628-04</td>
+    <td>G1622-01</td>
     <td></td>
     <td rowspan="2">0x047A</td>
     <td rowspan="2">0x047B</td>
   </tr>
   <tr>
-    <td>G1628-04-L</td>
+    <td>G1622-01-L</td>
     <td></td>
   </tr>
   <tr>
