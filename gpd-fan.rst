@@ -19,9 +19,13 @@ Currently the driver supports the following handhelds:
 
  - GPD Win Mini (7840U)
  - GPD Win Mini (8840U)
- - GPD Win Max 2
+ - GPD Win Mini (HX370)
+ - GPD Pocket 4
+ - GPD Duo
+ - GPD Win Max 2 (6800U)
  - GPD Win Max 2 2023 (7840U)
  - GPD Win Max 2 2024 (8840U)
+ - GPD Win Max 2 2025 (HX370)
  - GPD Win 4 (6800U)
  - GPD Win 4 (7840U)
 
@@ -37,11 +41,15 @@ gpd_fan_board
        - GPD Win Max 2 (6800U)
        - GPD Win Max 2 2023 (7840U)
        - GPD Win Max 2 2024 (8840U)
+       - GPD Win Max 2 2025 (HX370)
    - win4
        - GPD Win 4 (6800U)
    - win_mini
        - GPD Win Mini (7840U)
        - GPD Win Mini (8840U)
+       - GPD Win Mini (HX370)
+       - GPD Pocket 4
+       - GPD Duo
 
 Sysfs entries
 -------------
