@@ -32,7 +32,6 @@
 #define DRIVER_NAME "gpdfan"
 #define GPD_PWM_CTR_OFFSET 0x1841
 
-// model param, see document
 static char *gpd_fan_board = "";
 module_param(gpd_fan_board, charp, 0444);
 
@@ -47,9 +46,9 @@ enum gpd_board {
 };
 
 enum FAN_PWM_ENABLE {
-	DISABLE = 0,
-	MANUAL = 1,
-	AUTOMATIC = 2,
+	DISABLE		= 0,
+	MANUAL		= 1,
+	AUTOMATIC	= 2,
 };
 
 static struct {
@@ -67,10 +66,10 @@ static struct {
 	unsigned long read_pwm_last_update;
 #endif
 
-	const struct gpd_board_drvdata *drvdata;
+	const struct gpd_fan_drvdata *drvdata;
 } gpd_driver_priv;
 
-struct gpd_board_drvdata {
+struct gpd_fan_drvdata {
 	const char *board_name; /* Board name for module param comparison */
 	const enum gpd_board board;
 
@@ -82,40 +81,40 @@ struct gpd_board_drvdata {
 	const u16 pwm_max;
 };
 
-static struct gpd_board_drvdata gpd_win_mini_drvdata = {
-	.board_name = "win_mini",
-	.board = win_mini,
+static struct gpd_fan_drvdata gpd_win_mini_drvdata = {
+	.board_name		= "win_mini",
+	.board			= win_mini,
 
-	.addr_port = 0x4E,
-	.data_port = 0x4F,
-	.manual_control_enable = 0x047A,
-	.rpm_read = 0x0478,
-	.pwm_write = 0x047A,
-	.pwm_max = 244,
+	.addr_port		= 0x4E,
+	.data_port		= 0x4F,
+	.manual_control_enable	= 0x047A,
+	.rpm_read		= 0x0478,
+	.pwm_write		= 0x047A,
+	.pwm_max		= 244,
 };
 
-static struct gpd_board_drvdata gpd_win4_drvdata = {
-	.board_name = "win4",
-	.board = win4_6800u,
+static struct gpd_fan_drvdata gpd_win4_drvdata = {
+	.board_name		= "win4",
+	.board			= win4_6800u,
 
-	.addr_port = 0x2E,
-	.data_port = 0x2F,
-	.manual_control_enable = 0xC311,
-	.rpm_read = 0xC880,
-	.pwm_write = 0xC311,
-	.pwm_max = 127,
+	.addr_port		= 0x2E,
+	.data_port		= 0x2F,
+	.manual_control_enable	= 0xC311,
+	.rpm_read		= 0xC880,
+	.pwm_write		= 0xC311,
+	.pwm_max		= 127,
 };
 
-static struct gpd_board_drvdata gpd_wm2_drvdata = {
-	.board_name = "wm2",
-	.board = win_max_2,
+static struct gpd_fan_drvdata gpd_wm2_drvdata = {
+	.board_name		= "wm2",
+	.board			= win_max_2,
 
-	.addr_port = 0x4E,
-	.data_port = 0x4F,
-	.manual_control_enable = 0x0275,
-	.rpm_read = 0x0218,
-	.pwm_write = 0x1809,
-	.pwm_max = 184,
+	.addr_port		= 0x4E,
+	.data_port		= 0x4F,
+	.manual_control_enable	= 0x0275,
+	.rpm_read		= 0x0218,
+	.pwm_write		= 0x1809,
+	.pwm_max		= 184,
 };
 
 static const struct dmi_system_id dmi_table[] = {
@@ -211,12 +210,12 @@ static const struct dmi_system_id dmi_table[] = {
 	{}
 };
 
-static const struct gpd_board_drvdata *gpd_module_drvdata[] = {
+static const struct gpd_fan_drvdata *gpd_module_drvdata[] = {
 	&gpd_win_mini_drvdata, &gpd_win4_drvdata, &gpd_wm2_drvdata, NULL
 };
 
 /* Helper functions to handle EC read/write */
-static int gpd_ecram_read(const struct gpd_board_drvdata *drvdata, u16 offset,
+static int gpd_ecram_read(const struct gpd_fan_drvdata *drvdata, u16 offset,
 			  u8 *val)
 {
 	int ret;
@@ -247,7 +246,7 @@ static int gpd_ecram_read(const struct gpd_board_drvdata *drvdata, u16 offset,
 	return 0;
 }
 
-static int gpd_ecram_write(const struct gpd_board_drvdata *drvdata, u16 offset,
+static int gpd_ecram_write(const struct gpd_fan_drvdata *drvdata, u16 offset,
 			   u8 value)
 {
 	int ret;
@@ -309,11 +308,12 @@ static int gpd_generic_read_rpm(void)
 {
 	u8 high, low;
 	int ret;
-	const struct gpd_board_drvdata *const drvdata = gpd_driver_priv.drvdata;
+	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
 
 	ret = gpd_ecram_read(drvdata, drvdata->rpm_read, &high);
 	if (ret)
 		return ret;
+
 	ret = gpd_ecram_read(drvdata, drvdata->rpm_read + 1, &low);
 	if (ret)
 		return ret;
@@ -323,12 +323,13 @@ static int gpd_generic_read_rpm(void)
 
 static int gpd_win4_read_rpm(void)
 {
-	const struct gpd_board_drvdata *const drvdata = gpd_driver_priv.drvdata;
-	u8 PWMCTR;
+	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
+	u8 pwm_ctr_reg;
 	int ret;
 
-	gpd_ecram_read(drvdata, GPD_PWM_CTR_OFFSET, &PWMCTR);
-	if (PWMCTR != 0x7F)
+	gpd_ecram_read(drvdata, GPD_PWM_CTR_OFFSET, &pwm_ctr_reg);
+
+	if (pwm_ctr_reg != 0x7F)
 		gpd_ecram_write(drvdata, GPD_PWM_CTR_OFFSET, 0x7F);
 
 	ret = gpd_generic_read_rpm();
@@ -349,21 +350,24 @@ static int gpd_win4_read_rpm(void)
 						chip_ver | 0x80);
 		}
 	}
+
 	return ret;
 }
 
 static int gpd_wm2_read_rpm(void)
 {
-	const struct gpd_board_drvdata *const drvdata = gpd_driver_priv.drvdata;
+	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
 
 	for (u16 pwm_ctr_offset = GPD_PWM_CTR_OFFSET;
 	     pwm_ctr_offset <= GPD_PWM_CTR_OFFSET + 2; pwm_ctr_offset++) {
 		u8 PWMCTR;
 
 		gpd_ecram_read(drvdata, pwm_ctr_offset, &PWMCTR);
+
 		if (PWMCTR != 0xB8)
 			gpd_ecram_write(drvdata, pwm_ctr_offset, 0xB8);
 	}
+
 	return gpd_generic_read_rpm();
 }
 
@@ -371,22 +375,20 @@ static int gpd_wm2_read_rpm(void)
 static int gpd_read_rpm(void)
 {
 	switch (gpd_driver_priv.drvdata->board) {
-	case win_mini: {
+	case win_mini:
 		return gpd_generic_read_rpm();
-	}
-	case win4_6800u: {
+	case win4_6800u:
 		return gpd_win4_read_rpm();
-	}
-	case win_max_2: {
+	case win_max_2:
 		return gpd_wm2_read_rpm();
 	}
-	}
+
 	return 0;
 }
 
 static int gpd_wm2_read_pwm(void)
 {
-	const struct gpd_board_drvdata *const drvdata = gpd_driver_priv.drvdata;
+	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
 	u8 var;
 	int ret = gpd_ecram_read(drvdata, drvdata->pwm_write, &var);
 
@@ -411,12 +413,12 @@ static int gpd_read_pwm(void)
 
 static int gpd_generic_write_pwm(u8 val)
 {
-	const struct gpd_board_drvdata *const drvdata = gpd_driver_priv.drvdata;
-	u8 actual;
+	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
+	u8 pwm_reg;
 
 	// PWM value's range in EC is 1 - pwm_max, cast 0 - 255 to it.
-	actual = val * (drvdata->pwm_max - 1) / 255 + 1;
-	return gpd_ecram_write(drvdata, drvdata->pwm_write, actual);
+	pwm_reg = val * (drvdata->pwm_max - 1) / 255 + 1;
+	return gpd_ecram_write(drvdata, drvdata->pwm_write, pwm_reg);
 }
 
 static int gpd_win_mini_write_pwm(u8 val)
@@ -446,12 +448,13 @@ static int gpd_write_pwm(u8 val)
 	case win_max_2:
 		return gpd_wm2_write_pwm(val);
 	}
+
 	return 0;
 }
 
 static int gpd_win_mini_set_pwm_enable(enum FAN_PWM_ENABLE pwm_enable)
 {
-	const struct gpd_board_drvdata *drvdata;
+	const struct gpd_fan_drvdata *drvdata;
 
 	switch (pwm_enable) {
 	case DISABLE:
@@ -462,12 +465,13 @@ static int gpd_win_mini_set_pwm_enable(enum FAN_PWM_ENABLE pwm_enable)
 		drvdata = gpd_driver_priv.drvdata;
 		return gpd_ecram_write(drvdata, drvdata->pwm_write, 0);
 	}
+
 	return 0;
 }
 
 static int gpd_wm2_set_pwm_enable(enum FAN_PWM_ENABLE enable)
 {
-	const struct gpd_board_drvdata *const drvdata = gpd_driver_priv.drvdata;
+	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
 	int ret;
 
 	switch (enable) {
@@ -496,6 +500,7 @@ static int gpd_wm2_set_pwm_enable(enum FAN_PWM_ENABLE enable)
 		return ret;
 	}
 	}
+
 	return 0;
 }
 
@@ -509,6 +514,7 @@ static int gpd_set_pwm_enable(enum FAN_PWM_ENABLE enable)
 	case win_max_2:
 		return gpd_wm2_set_pwm_enable(enable);
 	}
+
 	return 0;
 }
 
@@ -558,8 +564,7 @@ static int gpd_fan_hwmon_read(__always_unused struct device *dev,
 			return 0;
 		}
 		return -EOPNOTSUPP;
-	}
-	if (type == hwmon_pwm) {
+	} else if (type == hwmon_pwm) {
 		int ret;
 
 		switch (attr) {
@@ -593,6 +598,7 @@ static int gpd_fan_hwmon_read(__always_unused struct device *dev,
 		return 0;
 	}
 #endif
+
 	return -EOPNOTSUPP;
 }
 
@@ -607,12 +613,15 @@ static int gpd_fan_hwmon_write(__always_unused struct device *dev,
 		case hwmon_pwm_enable:
 			if (!in_range(val, 0, 3))
 				return -EINVAL;
+
 			gpd_driver_priv.pwm_enable = val;
+
 			return gpd_set_pwm_enable(gpd_driver_priv.pwm_enable);
 		case hwmon_pwm_input:
 			var = clamp_val(val, 0, 255);
 
 			gpd_driver_priv.pwm_value = var;
+
 			return gpd_write_pwm(var);
 		default:
 			return -EOPNOTSUPP;
@@ -629,6 +638,7 @@ static int gpd_fan_hwmon_write(__always_unused struct device *dev,
 		}
 	}
 #endif
+
 	return -EOPNOTSUPP;
 }
 
@@ -661,7 +671,7 @@ struct dentry *DEBUG_FS_ENTRY = NULL;
 
 static int debugfs_manual_control_get(void *data, u64 *val)
 {
-	const struct gpd_board_drvdata *address = gpd_driver_priv.drvdata;
+	const struct gpd_fan_drvdata *address = gpd_driver_priv.drvdata;
 	u8 u8_val;
 
 	int ret = gpd_ecram_read(address, address->manual_control_enable,
@@ -672,14 +682,14 @@ static int debugfs_manual_control_get(void *data, u64 *val)
 
 static int debugfs_manual_control_set(void *data, u64 val)
 {
-	const struct gpd_board_drvdata *address = gpd_driver_priv.drvdata;
+	const struct gpd_fan_drvdata *address = gpd_driver_priv.drvdata;
 	return gpd_ecram_write(address, address->manual_control_enable,
 			       clamp_val(val, 0, 255));
 }
 
 static int debugfs_pwm_get(void *data, u64 *val)
 {
-	const struct gpd_board_drvdata *address = gpd_driver_priv.drvdata;
+	const struct gpd_fan_drvdata *address = gpd_driver_priv.drvdata;
 	u8 u8_val;
 
 	int ret = gpd_ecram_read(address, address->pwm_write, &u8_val);
@@ -689,7 +699,7 @@ static int debugfs_pwm_get(void *data, u64 *val)
 
 static int debugfs_pwm_set(void *data, u64 val)
 {
-	const struct gpd_board_drvdata *address = gpd_driver_priv.drvdata;
+	const struct gpd_fan_drvdata *address = gpd_driver_priv.drvdata;
 	return gpd_ecram_write(address, address->pwm_write,
 			       clamp_val(val, 0, 255));
 }
@@ -705,28 +715,28 @@ DEFINE_DEBUGFS_ATTRIBUTE(debugfs_pwm_fops, debugfs_pwm_get, debugfs_pwm_set,
 static int gpd_fan_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	const struct resource *plat_res;
-	const struct device *dev_reg;
-	const struct resource *region_res;
+	const struct resource *res;
+	const struct device *hwdev;
+	const struct resource *region;
 
-	plat_res = platform_get_resource(pdev, IORESOURCE_IO, 0);
-	if (IS_ERR(plat_res))
-		return dev_err_probe(dev, PTR_ERR(plat_res),
+	res = platform_get_resource(pdev, IORESOURCE_IO, 0);
+	if (IS_ERR(res))
+		return dev_err_probe(dev, PTR_ERR(res),
 				     "Failed to get platform resource\n");
 
-	region_res = devm_request_region(dev, plat_res->start,
-					 resource_size(plat_res), DRIVER_NAME);
-	if (IS_ERR(region_res))
-		return dev_err_probe(dev, PTR_ERR(region_res),
+	region = devm_request_region(dev, res->start,
+				     resource_size(res), DRIVER_NAME);
+	if (IS_ERR(region))
+		return dev_err_probe(dev, PTR_ERR(region),
 				     "Failed to request region\n");
 
-	dev_reg = devm_hwmon_device_register_with_info(dev,
-						       DRIVER_NAME,
-						       NULL,
-						       &gpd_fan_chip_info,
-						       NULL);
-	if (IS_ERR(dev_reg))
-		return dev_err_probe(dev, PTR_ERR(region_res),
+	hwdev = devm_hwmon_device_register_with_info(dev,
+						     DRIVER_NAME,
+						     NULL,
+						     &gpd_fan_chip_info,
+						     NULL);
+	if (IS_ERR(hwdev))
+		return dev_err_probe(dev, PTR_ERR(region),
 				     "Failed to register hwmon device\n");
 
 #ifdef OUT_OF_TREE
@@ -788,9 +798,9 @@ static struct platform_device *gpd_fan_platform_device;
 
 static int __init gpd_fan_init(void)
 {
-	const struct gpd_board_drvdata *match = NULL;
+	const struct gpd_fan_drvdata *match = NULL;
 
-	for (const struct gpd_board_drvdata **p = gpd_module_drvdata; *p; p++) {
+	for (const struct gpd_fan_drvdata **p = gpd_module_drvdata; *p; p++) {
 		if (strcmp(gpd_fan_board, (*p)->board_name) == 0) {
 			match = *p;
 			break;
