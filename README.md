@@ -17,6 +17,7 @@ Continuous testing on my GPD Win Max 2 2023 (7840U) with kernel_zen in nixos-uns
 - GPD Win Max 2 2024 (8840U)
 - GPD Win 4 (6800U)
 - GPD Win 4 (7840U)
+- GPD Pocket 4 (370HX)
 
 ## Usage
 
