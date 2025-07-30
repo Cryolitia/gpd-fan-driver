@@ -43,6 +43,7 @@ enum gpd_board {
 	win_mini,
 	win4_6800u,
 	win_max_2,
+	duo,
 };
 
 enum FAN_PWM_ENABLE {
@@ -84,6 +85,18 @@ struct gpd_fan_drvdata {
 static struct gpd_fan_drvdata gpd_win_mini_drvdata = {
 	.board_name		= "win_mini",
 	.board			= win_mini,
+
+	.addr_port		= 0x4E,
+	.data_port		= 0x4F,
+	.manual_control_enable	= 0x047A,
+	.rpm_read		= 0x0478,
+	.pwm_write		= 0x047A,
+	.pwm_max		= 244,
+};
+
+static struct gpd_fan_drvdata gpd_duo_drvdata = {
+	.board_name		= "duo",
+	.board			= duo,
 
 	.addr_port		= 0x4E,
 	.data_port		= 0x4F,
@@ -190,6 +203,22 @@ static const struct dmi_system_id dmi_table[] = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "G1619-05"),
 		},
 		.driver_data = &gpd_wm2_drvdata,
+	},
+	{
+		// GPD Duo
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "G1622-01"),
+		},
+		.driver_data = &gpd_duo_drvdata,
+	},
+	{
+		// GPD Duo (another)
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "G1622-01-L"),
+		},
+		.driver_data = &gpd_duo_drvdata,
 	},
 	{
 		// GPD Pocket 4
@@ -376,6 +405,7 @@ static int gpd_read_rpm(void)
 {
 	switch (gpd_driver_priv.drvdata->board) {
 	case win_mini:
+	case duo:
 		return gpd_generic_read_rpm();
 	case win4_6800u:
 		return gpd_win4_read_rpm();
@@ -403,6 +433,7 @@ static int gpd_read_pwm(void)
 {
 	switch (gpd_driver_priv.drvdata->board) {
 	case win_mini:
+	case duo:
 	case win4_6800u:
 		return gpd_driver_priv.pwm_value;
 	case win_max_2:
@@ -429,6 +460,25 @@ static int gpd_win_mini_write_pwm(u8 val)
 		return -EPERM;
 }
 
+static int gpd_duo_write_pwm_twice(u8 val)
+{
+	int ret;
+	ret = gpd_generic_write_pwm(val);
+
+	if (ret)
+		return ret;
+
+	return gpd_generic_write_pwm(val+1);
+}
+
+static int gpd_duo_write_pwm(u8 val)
+{
+	if (gpd_driver_priv.pwm_enable == MANUAL)
+		return gpd_duo_write_pwm_twice(val);
+	else
+		return -EPERM;
+}
+
 static int gpd_wm2_write_pwm(u8 val)
 {
 	if (gpd_driver_priv.pwm_enable != DISABLE)
@@ -443,6 +493,8 @@ static int gpd_write_pwm(u8 val)
 	switch (gpd_driver_priv.drvdata->board) {
 	case win_mini:
 		return gpd_win_mini_write_pwm(val);
+	case duo:
+		return gpd_duo_write_pwm(val);
 	case win4_6800u:
 		return gpd_generic_write_pwm(val);
 	case win_max_2:
@@ -461,6 +513,23 @@ static int gpd_win_mini_set_pwm_enable(enum FAN_PWM_ENABLE pwm_enable)
 		return gpd_generic_write_pwm(255);
 	case MANUAL:
 		return gpd_generic_write_pwm(gpd_driver_priv.pwm_value);
+	case AUTOMATIC:
+		drvdata = gpd_driver_priv.drvdata;
+		return gpd_ecram_write(drvdata, drvdata->pwm_write, 0);
+	}
+
+	return 0;
+}
+
+static int gpd_duo_set_pwm_enable(enum FAN_PWM_ENABLE pwm_enable)
+{
+	const struct gpd_fan_drvdata *drvdata;
+
+	switch (pwm_enable) {
+	case DISABLE:
+		return gpd_duo_write_pwm_twice(255);
+	case MANUAL:
+		return gpd_duo_write_pwm_twice(gpd_driver_priv.pwm_value);
 	case AUTOMATIC:
 		drvdata = gpd_driver_priv.drvdata;
 		return gpd_ecram_write(drvdata, drvdata->pwm_write, 0);
@@ -511,6 +580,8 @@ static int gpd_set_pwm_enable(enum FAN_PWM_ENABLE enable)
 	case win_mini:
 	case win4_6800u:
 		return gpd_win_mini_set_pwm_enable(enable);
+	case duo:
+		return gpd_duo_set_pwm_enable(enable);
 	case win_max_2:
 		return gpd_wm2_set_pwm_enable(enable);
 	}
