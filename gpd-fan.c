@@ -33,10 +33,6 @@
 static char *gpd_fan_board = "";
 module_param(gpd_fan_board, charp, 0444);
 
-// EC read/write locker, protecting single EC access
-// Should never access EC at the same time, otherwise system down.
-static DEFINE_MUTEX(gpd_fan_atomic_lock);
-
 // EC read/write locker, protecting a sequence of EC operations
 static DEFINE_MUTEX(gpd_fan_sequence_lock);
 
@@ -234,15 +230,10 @@ static const struct gpd_fan_drvdata *gpd_module_drvdata[] = {
 };
 
 // Helper functions to handle EC read/write
-static int gpd_ecram_read(u16 offset, u8 *val)
+static void gpd_ecram_read(u16 offset, u8 *val)
 {
 	u16 addr_port = gpd_driver_priv.drvdata->addr_port;
 	u16 data_port = gpd_driver_priv.drvdata->data_port;
-	int ret;
-
-	ret = mutex_lock_interruptible(&gpd_fan_atomic_lock);
-	if (ret)
-		return ret;
 
 	outb(0x2E, addr_port);
 	outb(0x11, data_port);
@@ -258,20 +249,12 @@ static int gpd_ecram_read(u16 offset, u8 *val)
 	outb(0x12, data_port);
 	outb(0x2F, addr_port);
 	*val = inb(data_port);
-
-	mutex_unlock(&gpd_fan_atomic_lock);
-	return 0;
 }
 
-static int gpd_ecram_write(u16 offset, u8 value)
+static void gpd_ecram_write(u16 offset, u8 value)
 {
 	u16 addr_port = gpd_driver_priv.drvdata->addr_port;
 	u16 data_port = gpd_driver_priv.drvdata->data_port;
-	int ret;
-
-	ret = mutex_lock_interruptible(&gpd_fan_atomic_lock);
-	if (ret)
-		return ret;
 
 	outb(0x2E, addr_port);
 	outb(0x11, data_port);
@@ -287,46 +270,29 @@ static int gpd_ecram_write(u16 offset, u8 value)
 	outb(0x12, data_port);
 	outb(0x2F, addr_port);
 	outb(value, data_port);
-
-	mutex_unlock(&gpd_fan_atomic_lock);
-	return 0;
 }
 
 static int gpd_generic_read_rpm(void)
 {
 	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
 	u8 high, low;
-	int ret;
 
-	ret = gpd_ecram_read(drvdata->rpm_read, &high);
-	if (ret)
-		return ret;
-
-	ret = gpd_ecram_read(drvdata->rpm_read + 1, &low);
-	if (ret)
-		return ret;
+	gpd_ecram_read(drvdata->rpm_read, &high);
+	gpd_ecram_read(drvdata->rpm_read + 1, &low);
 
 	return (u16)high << 8 | low;
 }
 
-static int gpd_win4_init_ec(void)
+static void gpd_win4_init_ec(void)
 {
 	u8 chip_id, chip_ver;
-	u8 ret;
 
-	ret = gpd_ecram_read(0x2000, &chip_id);
-	if (ret)
-		return ret;
+	gpd_ecram_read(0x2000, &chip_id);
 
 	if (chip_id == 0x55) {
-		ret = gpd_ecram_read(0x1060, &chip_ver);
-		if (ret)
-			return ret;
-
-		ret = gpd_ecram_write(0x1060, chip_ver | 0x80);
+		gpd_ecram_read(0x1060, &chip_ver);
+		gpd_ecram_write(0x1060, chip_ver | 0x80);
 	}
-
-	return ret;
 }
 
 static int gpd_win4_read_rpm(void)
@@ -337,28 +303,21 @@ static int gpd_win4_read_rpm(void)
 
 	if (ret == 0)
 		// Re-init EC when speed is 0
-		ret = gpd_win4_init_ec();
+		gpd_win4_init_ec();
 
 	return ret;
 }
 
 static int gpd_wm2_read_rpm(void)
 {
-	u8 ret;
-
 	for (u16 pwm_ctr_offset = GPD_PWM_CTR_OFFSET;
 	     pwm_ctr_offset <= GPD_PWM_CTR_OFFSET + 2; pwm_ctr_offset++) {
 		u8 PWMCTR;
 
-		ret = gpd_ecram_read(pwm_ctr_offset, &PWMCTR);
-		if (ret)
-			return ret;
+		gpd_ecram_read(pwm_ctr_offset, &PWMCTR);
 
-		if (PWMCTR != 0xB8) {
-			ret = gpd_ecram_write(pwm_ctr_offset, 0xB8);
-			if (ret)
-				return ret;
-		}
+		if (PWMCTR != 0xB8)
+			gpd_ecram_write(pwm_ctr_offset, 0xB8);
 	}
 
 	return gpd_generic_read_rpm();
@@ -383,12 +342,9 @@ static int gpd_read_rpm(void)
 static int gpd_wm2_read_pwm(void)
 {
 	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
-	int ret;
 	u8 var;
 
-	ret = gpd_ecram_read(drvdata->pwm_write, &var);
-	if (ret)
-		return ret;
+	gpd_ecram_read(drvdata->pwm_write, &var);
 
 	// Match gpd_generic_write_pwm(u8) below
 	return DIV_ROUND_CLOSEST((var - 1) * 255, (drvdata->pwm_max - 1));
@@ -401,7 +357,15 @@ static int gpd_read_pwm(void)
 	case win_mini:
 	case duo:
 	case win4_6800u:
-		return gpd_driver_priv.pwm_value;
+		switch (gpd_driver_priv.pwm_enable) {
+		case DISABLE:
+			return 255;
+		case MANUAL:
+			return gpd_driver_priv.pwm_value;
+		case AUTOMATIC:
+			return -EOPNOTSUPP;
+		}
+		break;
 	case win_max_2:
 		return gpd_wm2_read_pwm();
 	}
@@ -416,133 +380,96 @@ static inline u8 gpd_cast_pwm_range(u8 val)
 	return DIV_ROUND_CLOSEST(val * (drvdata->pwm_max - 1), 255) + 1;
 }
 
-static int gpd_generic_write_pwm(u8 val)
+static void gpd_generic_write_pwm(u8 val)
 {
 	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
 	u8 pwm_reg;
 
 	pwm_reg = gpd_cast_pwm_range(val);
-	return gpd_ecram_write(drvdata->pwm_write, pwm_reg);
+	gpd_ecram_write(drvdata->pwm_write, pwm_reg);
 }
 
-static int gpd_win_mini_write_pwm(u8 val)
-{
-	if (gpd_driver_priv.pwm_enable != MANUAL)
-		return -EPERM;
-
-	return gpd_generic_write_pwm(val);
-}
-
-static int gpd_duo_write_pwm_twice(u8 val)
+static void gpd_duo_write_pwm(u8 val)
 {
 	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
 	u8 pwm_reg;
-	int ret;
 
 	pwm_reg = gpd_cast_pwm_range(val);
-	ret = gpd_ecram_write(drvdata->pwm_write, pwm_reg);
-	if (ret)
-		return ret;
-
-	return gpd_ecram_write(drvdata->pwm_write + 1, pwm_reg);
-}
-
-static int gpd_duo_write_pwm(u8 val)
-{
-	if (gpd_driver_priv.pwm_enable != MANUAL)
-		return -EPERM;
-
-	return gpd_duo_write_pwm_twice(val);
-}
-
-static int gpd_wm2_write_pwm(u8 val)
-{
-	if (gpd_driver_priv.pwm_enable != MANUAL)
-		return -EPERM;
-
-	return gpd_generic_write_pwm(val);
+	gpd_ecram_write(drvdata->pwm_write, pwm_reg);
+	gpd_ecram_write(drvdata->pwm_write + 1, pwm_reg);
 }
 
 // Write value for pwm1
 static int gpd_write_pwm(u8 val)
 {
+	if (gpd_driver_priv.pwm_enable != MANUAL)
+		return -EPERM;
+
 	switch (gpd_driver_priv.drvdata->board) {
-	case win_mini:
-		return gpd_win_mini_write_pwm(val);
 	case duo:
-		return gpd_duo_write_pwm(val);
+		gpd_duo_write_pwm(val);
+		break;
+	case win_mini:
 	case win4_6800u:
-		return gpd_generic_write_pwm(val);
 	case win_max_2:
-		return gpd_wm2_write_pwm(val);
+		gpd_generic_write_pwm(val);
+		break;
 	}
 
 	return 0;
 }
 
-static int gpd_win_mini_set_pwm_enable(enum FAN_PWM_ENABLE pwm_enable)
+static void gpd_win_mini_set_pwm_enable(enum FAN_PWM_ENABLE pwm_enable)
 {
-	const struct gpd_fan_drvdata *drvdata;
-
 	switch (pwm_enable) {
 	case DISABLE:
-		return gpd_generic_write_pwm(255);
+		gpd_generic_write_pwm(255);
+		break;
 	case MANUAL:
-		return gpd_generic_write_pwm(gpd_driver_priv.pwm_value);
+		gpd_generic_write_pwm(gpd_driver_priv.pwm_value);
+		break;
 	case AUTOMATIC:
-		drvdata = gpd_driver_priv.drvdata;
-		return gpd_ecram_write(drvdata->pwm_write, 0);
+		gpd_ecram_write(gpd_driver_priv.drvdata->pwm_write, 0);
+		break;
 	}
-
-	return 0;
 }
 
-static int gpd_duo_set_pwm_enable(enum FAN_PWM_ENABLE pwm_enable)
+static void gpd_duo_set_pwm_enable(enum FAN_PWM_ENABLE pwm_enable)
 {
-	const struct gpd_fan_drvdata *drvdata;
-
 	switch (pwm_enable) {
 	case DISABLE:
-		return gpd_duo_write_pwm_twice(255);
+		gpd_duo_write_pwm(255);
+		break;
 	case MANUAL:
-		return gpd_duo_write_pwm_twice(gpd_driver_priv.pwm_value);
+		gpd_duo_write_pwm(gpd_driver_priv.pwm_value);
+		break;
 	case AUTOMATIC:
-		drvdata = gpd_driver_priv.drvdata;
-		return gpd_ecram_write(drvdata->pwm_write, 0);
+		gpd_ecram_write(gpd_driver_priv.drvdata->pwm_write, 0);
+		break;
 	}
-
-	return 0;
 }
 
-static int gpd_wm2_set_pwm_enable(enum FAN_PWM_ENABLE enable)
+static void gpd_wm2_set_pwm_enable(enum FAN_PWM_ENABLE enable)
 {
 	const struct gpd_fan_drvdata *const drvdata = gpd_driver_priv.drvdata;
-	int ret;
 
 	switch (enable) {
 	case DISABLE:
-		ret = gpd_generic_write_pwm(255);
-
-		if (ret)
-			return ret;
-
-		return gpd_ecram_write(drvdata->manual_control_enable, 1);
+		gpd_generic_write_pwm(255);
+		gpd_ecram_write(drvdata->manual_control_enable, 1);
+		break;
 	case MANUAL:
-		ret = gpd_generic_write_pwm(gpd_driver_priv.pwm_value);
-
-		if (ret)
-			return ret;
-
-		return gpd_ecram_write(drvdata->manual_control_enable, 1);
+		gpd_generic_write_pwm(gpd_driver_priv.pwm_value);
+		gpd_ecram_write(drvdata->manual_control_enable, 1);
+		break;
 	case AUTOMATIC:
-		return gpd_ecram_write(drvdata->manual_control_enable, 0);
+		gpd_ecram_write(drvdata->manual_control_enable, 0);
+		break;
 	}
-
-	return 0;
 }
 
 // Write value for pwm1_enable
-static int gpd_set_pwm_enable(enum FAN_PWM_ENABLE enable)
+static void gpd_set_pwm_enable(enum FAN_PWM_ENABLE enable)
 {
 	if (enable == MANUAL)
 		// Set pwm_value to max firstly when switching to manual mode, in
@@ -552,14 +479,15 @@ static int gpd_set_pwm_enable(enum FAN_PWM_ENABLE enable)
 	switch (gpd_driver_priv.drvdata->board) {
 	case win_mini:
 	case win4_6800u:
-		return gpd_win_mini_set_pwm_enable(enable);
+		gpd_win_mini_set_pwm_enable(enable);
+		break;
 	case duo:
-		return gpd_duo_set_pwm_enable(enable);
+		gpd_duo_set_pwm_enable(enable);
+		break;
 	case win_max_2:
-		return gpd_wm2_set_pwm_enable(enable);
+		gpd_wm2_set_pwm_enable(enable);
+		break;
 	}
-
-	return 0;
 }
 
 static umode_t gpd_fan_hwmon_is_visible(__always_unused const void *drvdata,
@@ -656,7 +584,8 @@ static int gpd_fan_hwmon_write(__always_unused struct device *dev,
 
 			gpd_driver_priv.pwm_enable = val;
 
-			ret = gpd_set_pwm_enable(gpd_driver_priv.pwm_enable);
+			gpd_set_pwm_enable(gpd_driver_priv.pwm_enable);
+			ret = 0;
 			goto OUT;
 		case hwmon_pwm_input:
 			if (!in_range(val, 0, 255)) {
@@ -708,16 +637,17 @@ static int debugfs_manual_control_get(void *data, u64 *val)
 	const struct gpd_fan_drvdata *address = gpd_driver_priv.drvdata;
 	u8 u8_val;
 
-	int ret = gpd_ecram_read(address->manual_control_enable, &u8_val);
+	gpd_ecram_read(address->manual_control_enable, &u8_val);
 	*val = (u64)u8_val;
-	return ret;
+	return 0;
 }
 
 static int debugfs_manual_control_set(void *data, u64 val)
 {
 	const struct gpd_fan_drvdata *address = gpd_driver_priv.drvdata;
-	return gpd_ecram_write(address->manual_control_enable,
+	gpd_ecram_write(address->manual_control_enable,
 			       clamp_val(val, 0, 255));
+	return 0;
 }
 
 static int debugfs_pwm_get(void *data, u64 *val)
@@ -725,15 +655,16 @@ static int debugfs_pwm_get(void *data, u64 *val)
 	const struct gpd_fan_drvdata *address = gpd_driver_priv.drvdata;
 	u8 u8_val;
 
-	int ret = gpd_ecram_read(address->pwm_write, &u8_val);
+	gpd_ecram_read(address->pwm_write, &u8_val);
 	*val = (u64)u8_val;
-	return ret;
+	return 0;
 }
 
 static int debugfs_pwm_set(void *data, u64 val)
 {
 	const struct gpd_fan_drvdata *address = gpd_driver_priv.drvdata;
-	return gpd_ecram_write(address->pwm_write, clamp_val(val, 0, 255));
+	gpd_ecram_write(address->pwm_write, clamp_val(val, 0, 255));
+	return 0;
 }
 
 DEFINE_DEBUGFS_ATTRIBUTE(debugfs_manual_control_fops,

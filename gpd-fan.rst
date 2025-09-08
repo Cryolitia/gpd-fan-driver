@@ -4,13 +4,13 @@ Kernel driver gpd-fan
 =========================
 
 Author:
-    - Cryolitia PukNgae <Cryolitia@gmail.com>
+    - Cryolitia PukNgae <cryolitia@gmail.com>
 
 Description
 ------------
 
-Handheld devices from Shenzhen GPD Technology Co., Ltd. provide fan readings and fan control through
-their embedded controllers.
+Handheld devices from Shenzhen GPD Technology Co., Ltd. provide fan readings
+and fan control through their embedded controllers.
 
 Supported devices
 -----------------
@@ -60,12 +60,19 @@ fan1_input
   Read Only. Reads current fan RPM.
 
 pwm1_enable
-  Read/Write. Enable manual fan control. Write "0" to disable control and run at
-  full speed. Write "1" to set to manual, write "2" to let the EC control decide
-  fan speed. Read this attribute to see current status.
+  Read/Write. Enable manual fan control. Write "0" to disable control and run
+  at full speed. Write "1" to set to manual, write "2" to let the EC control
+  decide fan speed. Read this attribute to see current status.
+
+  NB：In consideration of the safety of the device, when setting to manual mode,
+  the pwm speed will be set to the maximum value (255) by default. You can set
+  a different value by writing pwm1 later.
 
 pwm1
-  Read/Write. Read this attribute to see current duty cycle in the range [0-255].
-  When pwm1_enable is set to "1" (manual) write any value in the range [0-255]
-  to set fan speed.
+  Read/Write. Read this attribute to see current duty cycle in the range
+  [0-255]. When pwm1_enable is set to "1" (manual) write any value in the
+  range [0-255] to set fan speed.
 
+  NB: Many boards (except listed under wm2 above) don't support reading the
+  current pwm value in auto mode. That will just return EOPNOTSUPP. In manual
+  mode it will always return the real value.
