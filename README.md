@@ -1,25 +1,38 @@
 # GPD devices fan linux kernel driver
 
 > [!CAUTION]
-> 
+>
 > This driver has not been fully tested and reviewed.
-> 
+>
 > It may cause damage to your device. Use at your own risk.
 
-Continuous testing on my GPD Win Max 2 2023 (7840U) with kernel_zen in nixos-unstable
+**[Actral hardware test tracker](https://github.com/Cryolitia/gpd-fan-driver/issues/12)**
+
+## Upstream
+
+The driver has been upstreamed in the mainline kernel, and available since 6.18.
+
+The repo syncs changes two way between itself and upstream. To contribute to the project, both sending to the mailing list and open a PR here is accepted.
+
+The repo contains more functions that may not be accepted by the mainline kernel, it can be controlled by the macro `OUT_OF_TREE`.
 
 ## Should support
 
 - GPD Win Mini (7840U)
 - GPD Win Mini (8840U)
-- GPD Win Max 2
+- GPD Win Mini (HX370)
+- GPD Pocket 4
+- GPD Duo
+- GPD Win Max 2 (6800U)
 - GPD Win Max 2 2023 (7840U)
 - GPD Win Max 2 2024 (8840U)
+- GPD Win Max 2 2025 (HX370)
 - GPD Win 4 (6800U)
 - GPD Win 4 (7840U)
-- GPD Pocket 4 (370HX)
 
 ## Usage
+
+**[Driver document](./gpd-fan.rst)**
 
 - Current fan speed
     ```bash
@@ -54,10 +67,6 @@ Supported models:
 
 - Arch Linux(thx @dreirund): [gpd-fan-driver-dkms-git](https://aur.archlinux.org/packages/gpd-fan-driver-dkms-git)
 - NixOS: `nixosModules.default`
-
-## Upstreaming
-
-The driver is tried to upstreaming to the kernel mainline. The work progress could be seen in [branch in-tree](https://github.com/Cryolitia/gpd-fan-driver/tree/in-tree) and [my linux fork](https://github.com/Cryolitia-Forks/linux/tree/b4/gpd_fan). The main branch will write whatever I'd like and the in-tree branch will catering to the preferences of kernel developers.
 
 ## Datasheet
 
