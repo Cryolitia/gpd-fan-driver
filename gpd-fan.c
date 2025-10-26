@@ -759,6 +759,17 @@ static struct platform_driver gpd_fan_driver = {
 
 static struct platform_device *gpd_fan_platform_device;
 
+static void gpd_init_ec(const struct gpd_fan_drvdata *drvdata)
+{
+	switch (drvdata->board) {
+		case win4_6800u:
+			gpd_win4_init_ec();
+			break;
+		default:
+			break;
+	}
+}
+
 static int __init gpd_fan_init(void)
 {
 	const struct gpd_fan_drvdata *match = NULL;
@@ -771,8 +782,7 @@ static int __init gpd_fan_init(void)
 	}
 
 	if (!match) {
-		const struct dmi_system_id *dmi_match =
-			dmi_first_match(dmi_table);
+		const struct dmi_system_id *dmi_match = dmi_first_match(dmi_table);
 		if (dmi_match)
 			match = dmi_match->driver_data;
 	}
@@ -810,6 +820,8 @@ static int __init gpd_fan_init(void)
 		pr_warn("Failed to create platform device\n");
 		return PTR_ERR(gpd_fan_platform_device);
 	}
+
+	gpd_init_ec(match);
 
 #ifdef OUT_OF_TREE
 	pr_info("GPD Devices fan driver loaded\n");
