@@ -295,19 +295,6 @@ static void gpd_win4_init_ec(void)
 	}
 }
 
-static int gpd_win4_read_rpm(void)
-{
-	int ret;
-
-	ret = gpd_generic_read_rpm();
-
-	if (ret == 0)
-		// Re-init EC when speed is 0
-		gpd_win4_init_ec();
-
-	return ret;
-}
-
 static int gpd_wm2_read_rpm(void)
 {
 	for (u16 pwm_ctr_offset = GPD_PWM_CTR_OFFSET;
@@ -327,11 +314,10 @@ static int gpd_wm2_read_rpm(void)
 static int gpd_read_rpm(void)
 {
 	switch (gpd_driver_priv.drvdata->board) {
+	case win4_6800u:
 	case win_mini:
 	case duo:
 		return gpd_generic_read_rpm();
-	case win4_6800u:
-		return gpd_win4_read_rpm();
 	case win_max_2:
 		return gpd_wm2_read_rpm();
 	}
