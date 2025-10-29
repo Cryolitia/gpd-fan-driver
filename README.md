@@ -29,6 +29,7 @@ The repo contains more functions that may not be accepted by the mainline kernel
 - GPD Win Max 2 2025 (HX370)
 - GPD Win 4 (6800U)
 - GPD Win 4 (7840U)
+- GPD Win 5
 
 ## Usage
 
@@ -62,6 +63,7 @@ Supported models:
 - wm2
 - win4
 - win_mini
+- duo
 
 ## Install
 
@@ -98,15 +100,15 @@ Supported models:
   <tr>
     <td rowspan="4">GPD Win Mini</td>
     <td>7840U</td>
-    <td rowspan="15">GPD</td>
+    <td rowspan="16">GPD</td>
     <td rowspan="2">G1617-01</td>
     <td rowspan="2"></td>
-    <td rowspan="8">0x4E</td>
-    <td rowspan="8">0x4F</td>
-    <td rowspan="8">0x0478</td>
+    <td rowspan="9">0x4E</td>
+    <td rowspan="9">0x4F</td>
+    <td rowspan="9">0x0478</td>
     <td colspan="2" rowspan="6">0x047A</td>
-    <td rowspan="8">244</td>
-    <td rowspan="8">0x047A</td>
+    <td rowspan="9">244</td>
+    <td rowspan="9">0x047A</td>
   </tr>
   <tr>
     <td>8840u</td>
@@ -135,13 +137,18 @@ Supported models:
     <td rowspan="2"></td>
     <td>G1622-01</td>
     <td></td>
-    <td rowspan="2">0x047A</td>
-    <td rowspan="2">0x047B</td>
+    <td rowspan="3">0x047A</td>
+    <td rowspan="3">0x047B</td>
   </tr>
   <tr>
     <td>G1622-01-L</td>
     <td></td>
   </tr>
+ <tr>
+    <td rowspan="1">GPD Win 5</td>
+	  <td rowspan="1"></td>
+    <td>G1618-05</td>
+ </tr>
   <tr>
     <td rowspan="3">GPD Win 4</td>
     <td>6800U</td>
