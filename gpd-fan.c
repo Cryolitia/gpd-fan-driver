@@ -295,6 +295,20 @@ static void gpd_win4_init_ec(void)
 	}
 }
 
+// Helper functions to init fan controls on devices with bugged EC.
+// The firmware wont open command and address to read/write the fans on boot,
+// so we do the init sequence ourself when the driver is loaded.
+static void gpd_init_ec(const struct gpd_fan_drvdata *drvdata)
+{
+	switch (drvdata->board) {
+		case win4_6800u:
+			gpd_win4_init_ec();
+			break;
+		default:
+			break;
+	}
+}
+
 static int gpd_wm2_read_rpm(void)
 {
 	for (u16 pwm_ctr_offset = GPD_PWM_CTR_OFFSET;
@@ -745,17 +759,6 @@ static struct platform_driver gpd_fan_driver = {
 
 static struct platform_device *gpd_fan_platform_device;
 
-static void gpd_init_ec(const struct gpd_fan_drvdata *drvdata)
-{
-	switch (drvdata->board) {
-		case win4_6800u:
-			gpd_win4_init_ec();
-			break;
-		default:
-			break;
-	}
-}
-
 static int __init gpd_fan_init(void)
 {
 	const struct gpd_fan_drvdata *match = NULL;
@@ -768,7 +771,8 @@ static int __init gpd_fan_init(void)
 	}
 
 	if (!match) {
-		const struct dmi_system_id *dmi_match = dmi_first_match(dmi_table);
+		const struct dmi_system_id *dmi_match =
+			dmi_first_match(dmi_table);
 		if (dmi_match)
 			match = dmi_match->driver_data;
 	}
