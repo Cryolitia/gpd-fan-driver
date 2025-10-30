@@ -295,17 +295,18 @@ static void gpd_win4_init_ec(void)
 	}
 }
 
-static int gpd_win4_read_rpm(void)
+// Helper functions to init fan controls on devices with bugged EC.
+// The firmware wont open command and address to read/write the fans on boot,
+// so we do the init sequence ourself when the driver is loaded.
+static void gpd_init_ec(const struct gpd_fan_drvdata *drvdata)
 {
-	int ret;
-
-	ret = gpd_generic_read_rpm();
-
-	if (ret == 0)
-		// Re-init EC when speed is 0
-		gpd_win4_init_ec();
-
-	return ret;
+	switch (drvdata->board) {
+		case win4_6800u:
+			gpd_win4_init_ec();
+			break;
+		default:
+			break;
+	}
 }
 
 static int gpd_wm2_read_rpm(void)
@@ -327,11 +328,10 @@ static int gpd_wm2_read_rpm(void)
 static int gpd_read_rpm(void)
 {
 	switch (gpd_driver_priv.drvdata->board) {
+	case win4_6800u:
 	case win_mini:
 	case duo:
 		return gpd_generic_read_rpm();
-	case win4_6800u:
-		return gpd_win4_read_rpm();
 	case win_max_2:
 		return gpd_wm2_read_rpm();
 	}
@@ -810,6 +810,8 @@ static int __init gpd_fan_init(void)
 		pr_warn("Failed to create platform device\n");
 		return PTR_ERR(gpd_fan_platform_device);
 	}
+
+	gpd_init_ec(match);
 
 #ifdef OUT_OF_TREE
 	pr_info("GPD Devices fan driver loaded\n");
