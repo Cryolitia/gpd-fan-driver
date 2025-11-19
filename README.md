@@ -29,6 +29,7 @@ The repo contains more functions that may not be accepted by the mainline kernel
 - GPD Win Max 2 2025 (HX370)
 - GPD Win 4 (6800U)
 - GPD Win 4 (7840U)
+- GPD Micro PC 2
 
 ## Usage
 
@@ -62,6 +63,7 @@ Supported models:
 - wm2
 - win4
 - win_mini
+- mpc2
 
 ## Install
 
