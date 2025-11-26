@@ -304,32 +304,6 @@ static int gpd_generic_read_rpm(void)
 	return (u16)high << 8 | low;
 }
 
-static void gpd_win4_init_ec(void)
-{
-	u8 chip_id, chip_ver;
-
-	gpd_ecram_read(0x2000, &chip_id);
-
-	if (chip_id == 0x55) {
-		gpd_ecram_read(0x1060, &chip_ver);
-		gpd_ecram_write(0x1060, chip_ver | 0x80);
-	}
-}
-
-// Helper functions to init fan controls on devices with bugged EC.
-// The firmware wont open command and address to read/write the fans on boot,
-// so we do the init sequence ourself when the driver is loaded.
-static void gpd_init_ec(const struct gpd_fan_drvdata *drvdata)
-{
-	switch (drvdata->board) {
-		case win4_6800u:
-			gpd_win4_init_ec();
-			break;
-		default:
-			break;
-	}
-}
-
 static int gpd_wm2_read_rpm(void)
 {
 	for (u16 pwm_ctr_offset = GPD_PWM_CTR_OFFSET;
@@ -700,6 +674,28 @@ DEFINE_DEBUGFS_ATTRIBUTE(debugfs_pwm_fops, debugfs_pwm_get, debugfs_pwm_set,
 
 #endif
 
+static void gpd_win4_init_ec(void)
+{
+	u8 chip_id, chip_ver;
+
+	gpd_ecram_read(0x2000, &chip_id);
+
+	if (chip_id == 0x55) {
+		gpd_ecram_read(0x1060, &chip_ver);
+		gpd_ecram_write(0x1060, chip_ver | 0x80);
+	}
+}
+
+static void gpd_init_ec(void)
+{
+	// The buggy firmware won't initialize EC properly on boot.
+	// Before its initialization, reading RPM will always return 0,
+	// and writing PWM will have no effect.
+	// Initialize it manually on driver load.
+	if (gpd_driver_priv.drvdata->board == win4_6800u)
+		gpd_win4_init_ec();
+}
+
 static int gpd_fan_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -726,6 +722,8 @@ static int gpd_fan_probe(struct platform_device *pdev)
 	if (IS_ERR(hwdev))
 		return dev_err_probe(dev, PTR_ERR(hwdev),
 				     "Failed to register hwmon device\n");
+
+	gpd_init_ec();
 
 #ifdef OUT_OF_TREE
 	struct dentry *debug_fs_entry = debugfs_create_dir(DRIVER_NAME, NULL);
@@ -835,9 +833,6 @@ static int __init gpd_fan_init(void)
 		pr_warn("Failed to create platform device\n");
 		return PTR_ERR(gpd_fan_platform_device);
 	}
-
-	gpd_init_ec(match);
-
 #ifdef OUT_OF_TREE
 	pr_info("GPD Devices fan driver loaded\n");
 #endif
